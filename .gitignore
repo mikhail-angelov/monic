@@ -1,0 +1,47 @@
+# Go build artifacts
+/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# Output of coverage tool
+*.out
+
+# Dependency directories (remove the comment below if you use Go modules)
+/vendor/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker
+*.env
+.env.*
+
+# Node/npm (if any JS tooling)
+node_modules/
+
+# Misc
+*.tgz
+*.gz
+*.zip
+*.tar
+*.rar
+
+# Ignore config if needed
+config.json
+
+/monic

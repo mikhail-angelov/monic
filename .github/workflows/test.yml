@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        cache: true
+
+    - name: Verify dependencies
+      run: |
+        go mod download
+        go mod verify
+
+    - name: Run tests
+      run: go test -v ./...
+
+    - name: Build application
+      run: go build -o monic main.go
+
+    - name: Test build output
+      run: |
+        ./monic --version 2>/dev/null || echo "Application built successfully"
+        ls -la monic
