@@ -398,7 +398,6 @@ Images are tagged with:
 - `v1.0.0` (specific version)
 - `v1.0` (major.minor)
 - `v1` (major)
-- Commit SHA
 
 ### Pulling Docker Images
 
