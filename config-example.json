@@ -1,4 +1,5 @@
 {
+  "app_name": "MyApp",
   "system_checks": {
     "interval": 30,
     "cpu_threshold": 80,

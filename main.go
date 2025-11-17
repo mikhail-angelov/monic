@@ -41,7 +41,7 @@ func NewMonitorService(config *types.Config) *MonitorService {
 		systemMonitor: monitor.NewSystemMonitor(&config.SystemChecks),
 		httpMonitor:   monitor.NewHTTPMonitor(),
 		dockerMonitor: monitor.NewDockerMonitor(&config.DockerChecks),
-		alertManager:  alert.NewAlertManager(&config.Alerting),
+		alertManager:  alert.NewAlertManager(&config.Alerting, config.AppName),
 		stateManager:  alert.NewStateManager(),
 		stopChan:      make(chan struct{}),
 		alerts:        make([]types.Alert, 0),

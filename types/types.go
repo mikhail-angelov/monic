@@ -4,6 +4,7 @@ import "time"
 
 // Config represents the main configuration structure
 type Config struct {
+	AppName      string             `json:"app_name"`
 	SystemChecks SystemChecksConfig `json:"system_checks"`
 	HTTPChecks   []HTTPCheck        `json:"http_checks"`
 	Alerting     AlertingConfig     `json:"alerting"`
