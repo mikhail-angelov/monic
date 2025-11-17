@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   monic:
-    image: ghcr.io/mikhail-angelov/monic:0.0.6
+    image: ghcr.io/mikhail-angelov/monic:latest
     container_name: monic
     restart: unless-stopped
     # Run with host network to monitor host system resources
