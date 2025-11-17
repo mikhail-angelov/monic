@@ -23,11 +23,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-X main.ve
 FROM alpine:latest
 
 # Install required packages for system monitoring and Docker client
-RUN apk add --no-cache ca-certificates docker-cli
-
-# Create non-root user and add to docker group
-RUN addgroup -S monic && adduser -S monic -G monic && \
-    addgroup -S docker && addgroup monic docker
+# RUN apk add --no-cache ca-certificates docker-cli
 
 WORKDIR /app
 
@@ -36,9 +32,6 @@ COPY --from=builder /app/monic .
 
 # Create log directory
 RUN mkdir -p /var/log && chown monic:monic /var/log
-
-# Switch to non-root user (with docker group access)
-USER monic
 
 # Run the application
 CMD ["./monic"]
