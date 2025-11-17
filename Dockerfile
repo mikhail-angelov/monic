@@ -22,9 +22,6 @@ RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-X main.ve
 # Runtime stage
 FROM alpine:latest
 
-# Install required packages for system monitoring and Docker client
-# RUN apk add --no-cache ca-certificates docker-cli
-
 WORKDIR /app
 
 # Copy binary from builder stage

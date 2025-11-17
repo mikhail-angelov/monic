@@ -136,22 +136,20 @@ func (am *AlertManager) sendEmail(alert types.Alert) error {
 	addr := fmt.Sprintf("%s:%d", emailConfig.SMTPHost, emailConfig.SMTPPort)
 
 	if emailConfig.UseTLS {
-		// Use TLS connection
+		// Use STARTTLS (required for Gmail)
+		client, err := smtp.Dial(addr)
+		if err != nil {
+			return fmt.Errorf("SMTP dial failed: %w", err)
+		}
+		defer client.Close()
+
+		// Start TLS
 		tlsconfig := &tls.Config{
 			ServerName: emailConfig.SMTPHost,
 		}
-
-		conn, err := tls.Dial("tcp", addr, tlsconfig)
-		if err != nil {
-			return fmt.Errorf("TLS connection failed: %w", err)
+		if err = client.StartTLS(tlsconfig); err != nil {
+			return fmt.Errorf("STARTTLS failed: %w", err)
 		}
-		defer conn.Close()
-
-		client, err := smtp.NewClient(conn, emailConfig.SMTPHost)
-		if err != nil {
-			return fmt.Errorf("SMTP client creation failed: %w", err)
-		}
-		defer client.Close()
 
 		// Auth
 		if err = client.Auth(auth); err != nil {
