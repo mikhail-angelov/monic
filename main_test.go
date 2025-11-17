@@ -1,12 +1,13 @@
 package main
 
 import (
-	"bconf.com/monic/v2/types"
 	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 func TestLoadConfig(t *testing.T) {

@@ -1,10 +1,6 @@
 package main
 
 import (
-	"bconf.com/monic/v2/alert"
-	"bconf.com/monic/v2/monitor"
-	"bconf.com/monic/v2/server"
-	"bconf.com/monic/v2/types"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,6 +9,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"bconf.com/monic/alert"
+	"bconf.com/monic/monitor"
+	"bconf.com/monic/server"
+	"bconf.com/monic/types"
 )
 
 // MonitorService represents the main monitoring service
@@ -20,7 +21,7 @@ type MonitorService struct {
 	config        *types.Config
 	systemMonitor *monitor.SystemMonitor
 	httpMonitor   *monitor.HTTPMonitor
-	dockerMonitor *monitor.SimpleDockerMonitor
+	dockerMonitor *monitor.DockerMonitor
 	alertManager  *alert.AlertManager
 	stateManager  *alert.StateManager
 	statsServer   *server.StatsServer
@@ -39,7 +40,7 @@ func NewMonitorService(config *types.Config) *MonitorService {
 		config:        config,
 		systemMonitor: monitor.NewSystemMonitor(&config.SystemChecks),
 		httpMonitor:   monitor.NewHTTPMonitor(),
-		dockerMonitor: monitor.NewSimpleDockerMonitor(&config.DockerChecks),
+		dockerMonitor: monitor.NewDockerMonitor(&config.DockerChecks),
 		alertManager:  alert.NewAlertManager(&config.Alerting),
 		stateManager:  alert.NewStateManager(),
 		stopChan:      make(chan struct{}),

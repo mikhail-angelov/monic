@@ -1,7 +1,6 @@
 package monitor
 
 import (
-	"bconf.com/monic/v2/types"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -9,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 // HTTPMonitor handles HTTP/HTTPS endpoint monitoring
@@ -188,7 +189,7 @@ func (hm *HTTPMonitor) ValidateHTTPCheck(check types.HTTPCheck) error {
 // GetHTTPStats returns statistics about HTTP monitoring performance
 func (hm *HTTPMonitor) GetHTTPStats(results []types.HTTPCheckResult) map[string]interface{} {
 	stats := make(map[string]interface{})
-	
+
 	if len(results) == 0 {
 		return stats
 	}

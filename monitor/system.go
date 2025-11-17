@@ -1,10 +1,11 @@
 package monitor
 
 import (
-	"bconf.com/monic/v2/types"
 	"fmt"
 	"runtime"
 	"time"
+
+	"bconf.com/monic/types"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"

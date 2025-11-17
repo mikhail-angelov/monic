@@ -1,7 +1,6 @@
 package alert
 
 import (
-	"bconf.com/monic/v2/types"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
@@ -11,11 +10,13 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 // AlertManager handles sending alerts via configured channels
 type AlertManager struct {
-	config *types.AlertingConfig
+	config   *types.AlertingConfig
 	lastSent map[string]time.Time // Track last sent alerts to avoid spam
 }
 

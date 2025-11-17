@@ -1,11 +1,12 @@
 package alert
 
 import (
-	"bconf.com/monic/v2/types"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 func TestNewAlertManager(t *testing.T) {

@@ -1,13 +1,14 @@
 package monitor
 
 import (
-	"bconf.com/monic/v2/types"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os/exec"
 	"strings"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 // SimpleDockerMonitor handles Docker container monitoring using Docker CLI
@@ -73,7 +74,6 @@ func (dm *SimpleDockerMonitor) CheckContainers() ([]types.DockerContainerStats, 
 			Status:       getString(containerData["Status"]),
 			State:        getString(containerData["State"]),
 			Running:      strings.Contains(getString(containerData["State"]), "running"),
-			RestartCount: 0, // Not available in basic docker ps
 			Created:      now, // Not available in basic docker ps
 			Timestamp:    now,
 		}
@@ -92,9 +92,8 @@ func (dm *SimpleDockerMonitor) CheckContainers() ([]types.DockerContainerStats, 
 			}
 		}
 
-		// Get detailed container info for restart count and exit code
+		// Get detailed container info for exit code and error
 		if containerInfo, err := dm.getContainerInfo(containerStats.ContainerID); err == nil {
-			containerStats.RestartCount = containerInfo.RestartCount
 			containerStats.ExitCode = containerInfo.ExitCode
 			containerStats.Error = containerInfo.Error
 		}
@@ -130,16 +129,6 @@ func (dm *SimpleDockerMonitor) CheckContainerStatus() ([]types.Alert, error) {
 			})
 		}
 
-		// Check for containers with high restart counts
-		if container.RestartCount > 10 {
-			alerts = append(alerts, types.Alert{
-				Type:      "docker",
-				Message:   fmt.Sprintf("Container %s (%s) has high restart count: %d", container.Name, container.ContainerID, container.RestartCount),
-				Level:     "warning",
-				Timestamp: now,
-			})
-		}
-
 		// Check for containers with non-zero exit codes
 		if container.ExitCode != 0 && container.ExitCode != 137 { // 137 is SIGKILL, often intentional
 			alerts = append(alerts, types.Alert{
@@ -167,7 +156,7 @@ func (dm *SimpleDockerMonitor) CheckContainerStatus() ([]types.Alert, error) {
 // GetContainerSummary returns a summary of container status
 func (dm *SimpleDockerMonitor) GetContainerSummary(stats []types.DockerContainerStats) map[string]interface{} {
 	summary := make(map[string]interface{})
-	
+
 	total := len(stats)
 	running := 0
 	stopped := 0
@@ -179,9 +168,6 @@ func (dm *SimpleDockerMonitor) GetContainerSummary(stats []types.DockerContainer
 			running++
 		} else {
 			stopped++
-		}
-		if container.RestartCount > 0 {
-			restarted++
 		}
 		if container.ExitCode != 0 || container.Error != "" {
 			errored++
@@ -224,7 +210,6 @@ func (dm *SimpleDockerMonitor) getContainerInfo(containerID string) (*types.Dock
 	state := info["State"].(map[string]interface{})
 
 	stats := &types.DockerContainerStats{
-		RestartCount: int(state["RestartCount"].(float64)),
 		ExitCode:     int(state["ExitCode"].(float64)),
 	}
 

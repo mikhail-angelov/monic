@@ -1,6 +1,6 @@
-# Monic - Analog Monitoring Service
+# Monic - Monitoring Service (inspired by [monit service](https://mmonit.com/monit/))
 
-A lightweight, CPU-efficient monitoring service written in Go that runs in Docker containers and monitors host system resources, HTTP endpoints, and Docker containers.
+Pure **vibe-coded** lightweight monitoring service written in Go that runs in Docker containers and monitors host system resources, HTTP endpoints, and Docker containers.
 
 ## Features
 
@@ -65,16 +65,16 @@ docker-compose up -d
 
 ```bash
 # Build the image
-docker build -t monic-monitor .
+docker build -t monic .
 
 # Run the container
 docker run -d \
-  --name monic-monitor \
+  --name monic \
   --privileged \
   --network host \
   -v /:/host:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  monic-monitor
+  monic
 ```
 
 ### Running Locally
@@ -200,11 +200,7 @@ To monitor host system resources from within a Docker container:
 3. Mount host filesystem: `-v /:/host:ro`
 4. Mount Docker socket for container monitoring: `-v /var/run/docker.sock:/var/run/docker.sock:ro`
 
-### Resource Limits
 
-The service is designed to be lightweight:
-- Memory: 64-128MB
-- CPU: 0.1-0.5 cores
 
 ## HTTP Stats API
 
@@ -453,12 +449,30 @@ The version is set during build and is included in Docker images when built via 
    - Check SMTP/Mailgun credentials
    - Verify network connectivity for email sending
 
+6. **Docker monitoring permission denied**
+   - Check Docker socket permissions on host
+   - Ensure user is in docker group
+   - See detailed guide in `docker-permission-fix.md`
+
 ### Logs
 
 Check container logs:
 ```bash
 docker logs monic-monitor
 ```
+
+## Docker Permission Issues
+
+If you encounter Docker permission errors when trying to monitor Docker containers, please refer to the detailed troubleshooting guide:
+
+[**Docker Permission Fix Guide**](docker-permission-fix.md)
+
+This guide provides step-by-step solutions for common Docker socket permission issues, including:
+
+- Checking and fixing Docker socket permissions
+- Adding users to the docker group
+- User ID mapping in containers
+- Alternative solutions for different scenarios
 
 ## License
 

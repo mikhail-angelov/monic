@@ -8,8 +8,8 @@
   },
   "http_checks": [
     {
-      "name": "local_service",
-      "url": "http://localhost:8080/health",
+      "name": "nginx",
+      "url": "http://localhost:8088",
       "method": "GET",
       "timeout": 10,
       "expected_status": 200,
@@ -40,13 +40,13 @@
     }
   },
   "docker_checks": {
-    "enabled": false,
+    "enabled": true,
     "check_interval": 60,
-    "containers": []
+    "containers": ["nginx"]
   },
   "http_server": {
-    "enabled": false,
-    "port": 8080,
+    "enabled": true,
+    "port": 8765,
     "username": "admin",
     "password": "monic123"
   }

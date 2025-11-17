@@ -1,13 +1,14 @@
 package server
 
 import (
-	"bconf.com/monic/v2/monitor"
-	"bconf.com/monic/v2/types"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"bconf.com/monic/monitor"
+	"bconf.com/monic/types"
 )
 
 func TestStatsServer_HandleStats(t *testing.T) {

@@ -1,13 +1,14 @@
 package server
 
 import (
-	"bconf.com/monic/v2/monitor"
-	"bconf.com/monic/v2/types"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
+
+	"bconf.com/monic/monitor"
+	"bconf.com/monic/types"
 )
 
 // StatsServer represents the HTTP stats server
@@ -93,7 +94,7 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	stats := s.getStatsResponse()
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if err := json.NewEncoder(w).Encode(stats); err != nil {
 		log.Printf("Error encoding stats response: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -104,7 +105,7 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 // getStatsResponse builds the complete stats response
 func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	response := make(map[string]interface{})
-	
+
 	// Service status
 	response["service_status"] = map[string]interface{}{
 		"status":     "running",
@@ -128,8 +129,8 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	if s.statsHistory != nil && len(*s.statsHistory) > 0 {
 		latestStats := (*s.statsHistory)[len(*s.statsHistory)-1]
 		response["current_system_stats"] = map[string]interface{}{
-			"timestamp":   latestStats.Timestamp.Format(time.RFC3339),
-			"cpu_usage":   latestStats.CPUUsage,
+			"timestamp": latestStats.Timestamp.Format(time.RFC3339),
+			"cpu_usage": latestStats.CPUUsage,
 			"memory_usage": map[string]interface{}{
 				"total":        latestStats.MemoryUsage.Total,
 				"used":         latestStats.MemoryUsage.Used,
@@ -171,7 +172,7 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 // getHTTPChecksStatus returns the status of all HTTP checks
 func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 	var checks []map[string]interface{}
-	
+
 	if s.httpHistory == nil {
 		return checks
 	}
@@ -197,12 +198,12 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 	// Build response for each check
 	for name, result := range latestResults {
 		check := map[string]interface{}{
-			"name":           name,
-			"url":            result.URL,
-			"status":         "success",
-			"last_check":     result.Timestamp.Format(time.RFC3339),
-			"response_time":  result.ResponseTime.String(),
-			"status_code":    result.StatusCode,
+			"name":          name,
+			"url":           result.URL,
+			"status":        "success",
+			"last_check":    result.Timestamp.Format(time.RFC3339),
+			"response_time": result.ResponseTime.String(),
+			"status_code":   result.StatusCode,
 		}
 
 		if !result.Success {
@@ -223,7 +224,7 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 // getRecentAlerts returns recent alerts
 func (s *StatsServer) getRecentAlerts() []map[string]interface{} {
 	var recentAlerts []map[string]interface{}
-	
+
 	if s.alerts == nil {
 		return recentAlerts
 	}

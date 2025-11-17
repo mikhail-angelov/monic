@@ -1,11 +1,12 @@
 package monitor
 
 import (
-	"bconf.com/monic/v2/types"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 func TestNewHTTPMonitor(t *testing.T) {
@@ -282,10 +283,10 @@ func TestHTTPMonitor_GetHTTPStats(t *testing.T) {
 	stats := monitor.GetHTTPStats(results)
 
 	expectedStats := map[string]interface{}{
-		"total_checks":        3,
-		"successful_checks":   2,
-		"failed_checks":       1,
-		"success_rate":        float64(2) / float64(3) * 100,
+		"total_checks":         3,
+		"successful_checks":    2,
+		"failed_checks":        1,
+		"success_rate":         float64(2) / float64(3) * 100,
 		"avg_response_time_ms": int64(150), // (100 + 200 + 150) / 3 = 150ms
 		"min_response_time_ms": int64(100),
 		"max_response_time_ms": int64(200),

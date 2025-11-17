@@ -1,9 +1,10 @@
 package monitor
 
 import (
-	"bconf.com/monic/v2/types"
 	"testing"
 	"time"
+
+	"bconf.com/monic/types"
 )
 
 func TestNewSystemMonitor(t *testing.T) {

@@ -22,13 +22,13 @@ type SystemChecksConfig struct {
 
 // HTTPCheck defines a single HTTP/HTTPS endpoint to monitor
 type HTTPCheck struct {
-	Name           string        `json:"name"`
-	URL            string        `json:"url"`
-	Method         string        `json:"method"`
-	Timeout        int           `json:"timeout"`
-	ExpectedStatus int           `json:"expected_status"`
-	CheckInterval  int           `json:"check_interval"`
-	LastCheck      time.Time     `json:"-"`
+	Name           string    `json:"name"`
+	URL            string    `json:"url"`
+	Method         string    `json:"method"`
+	Timeout        int       `json:"timeout"`
+	ExpectedStatus int       `json:"expected_status"`
+	CheckInterval  int       `json:"check_interval"`
+	LastCheck      time.Time `json:"-"`
 }
 
 // LoggingConfig contains logging settings
@@ -39,11 +39,11 @@ type LoggingConfig struct {
 
 // AlertingConfig contains alert notification settings
 type AlertingConfig struct {
-	Enabled     bool              `json:"enabled"`
-	Email       EmailConfig       `json:"email"`
-	Mailgun     MailgunConfig     `json:"mailgun"`
-	AlertLevels []string          `json:"alert_levels"` // info, warning, critical
-	Cooldown    int               `json:"cooldown"`     // minutes between repeated alerts
+	Enabled     bool          `json:"enabled"`
+	Email       EmailConfig   `json:"email"`
+	Mailgun     MailgunConfig `json:"mailgun"`
+	AlertLevels []string      `json:"alert_levels"` // info, warning, critical
+	Cooldown    int           `json:"cooldown"`     // minutes between repeated alerts
 }
 
 // EmailConfig contains SMTP email settings
@@ -60,19 +60,19 @@ type EmailConfig struct {
 
 // MailgunConfig contains Mailgun API settings
 type MailgunConfig struct {
-	Enabled    bool   `json:"enabled"`
-	APIKey     string `json:"api_key"`
-	Domain     string `json:"domain"`
-	From       string `json:"from"`
-	To         string `json:"to"`
-	BaseURL    string `json:"base_url"` // Default: "https://api.mailgun.net/v3"
+	Enabled bool   `json:"enabled"`
+	APIKey  string `json:"api_key"`
+	Domain  string `json:"domain"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	BaseURL string `json:"base_url"` // Default: "https://api.mailgun.net/v3"
 }
 
 // SystemStats contains collected system statistics
 type SystemStats struct {
-	Timestamp   time.Time         `json:"timestamp"`
-	CPUUsage    float64           `json:"cpu_usage"`
-	MemoryUsage MemoryStats       `json:"memory_usage"`
+	Timestamp   time.Time            `json:"timestamp"`
+	CPUUsage    float64              `json:"cpu_usage"`
+	MemoryUsage MemoryStats          `json:"memory_usage"`
 	DiskUsage   map[string]DiskStats `json:"disk_usage"`
 }
 
@@ -95,13 +95,13 @@ type DiskStats struct {
 
 // HTTPCheckResult contains the result of an HTTP check
 type HTTPCheckResult struct {
-	Name          string        `json:"name"`
-	URL           string        `json:"url"`
-	StatusCode    int           `json:"status_code"`
-	ResponseTime  time.Duration `json:"response_time"`
-	Success       bool          `json:"success"`
-	Error         string        `json:"error,omitempty"`
-	Timestamp     time.Time     `json:"timestamp"`
+	Name         string        `json:"name"`
+	URL          string        `json:"url"`
+	StatusCode   int           `json:"status_code"`
+	ResponseTime time.Duration `json:"response_time"`
+	Success      bool          `json:"success"`
+	Error        string        `json:"error,omitempty"`
+	Timestamp    time.Time     `json:"timestamp"`
 }
 
 // Alert represents a monitoring alert
@@ -130,18 +130,17 @@ type DockerConfig struct {
 
 // DockerContainerStats contains Docker container status information
 type DockerContainerStats struct {
-	ContainerID   string    `json:"container_id"`
-	Name          string    `json:"name"`
-	Status        string    `json:"status"`
-	State         string    `json:"state"`
-	Running       bool      `json:"running"`
-	RestartCount  int       `json:"restart_count"`
-	Created       time.Time `json:"created"`
-	StartedAt     time.Time `json:"started_at,omitempty"`
-	FinishedAt    time.Time `json:"finished_at,omitempty"`
-	ExitCode      int       `json:"exit_code,omitempty"`
-	Error         string    `json:"error,omitempty"`
-	Timestamp     time.Time `json:"timestamp"`
+	ContainerID  string    `json:"container_id"`
+	Name         string    `json:"name"`
+	Status       string    `json:"status"`
+	State        string    `json:"state"`
+	Running      bool      `json:"running"`
+	Created      time.Time `json:"created"`
+	StartedAt    string    `json:"started_at,omitempty"`
+	FinishedAt   string    `json:"finished_at,omitempty"`
+	ExitCode     int       `json:"exit_code,omitempty"`
+	Error        string    `json:"error,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
 }
 
 // HTTPServerConfig contains HTTP server settings for stats endpoint

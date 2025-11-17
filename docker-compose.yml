@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: monic-monitor
+    container_name: monic
     restart: unless-stopped
     # Run with host network to monitor host system resources
     network_mode: host
@@ -14,41 +14,44 @@ services:
       - /:/host:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./logs:/var/log/monic
+      - ./config.json:/app/config.json:ro
+    # Set user to match Docker socket permissions (optional, try if permission issues persist)
+    # user: "1000:1000"  # Replace with actual user:group IDs from host
     environment:
       - CONFIG_PATH=/app/config.json
     # Set privileged to access host system information
     privileged: true
     # Resource limits to ensure the monitor itself doesn't consume too much
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: '0.5'
-        reservations:
-          memory: 64M
-          cpus: '0.1'
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 128M
+    #       cpus: '0.5'
+    #     reservations:
+    #       memory: 64M
+    #       cpus: '0.1'
     # Health check configuration
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # healthcheck:
+    #   test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+    ports:
+      - "8765:8765"
+    depends_on:
+      - nginx
 
   # Optional: Add a simple web interface for monitoring (future enhancement)
-  # monic-ui:
-  #   image: nginx:alpine
-  #   ports:
-  #     - "8080:80"
-  #   volumes:
-  #     - ./ui:/usr/share/nginx/html
-  #   depends_on:
-  #     - monic
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8088:80"
 
 volumes:
   monic-logs:
