@@ -33,20 +33,12 @@ WORKDIR /app
 
 # Copy binary from builder stage
 COPY --from=builder /app/monic .
-COPY --from=builder /app/config.json .
 
 # Create log directory
 RUN mkdir -p /var/log && chown monic:monic /var/log
 
 # Switch to non-root user (with docker group access)
 USER monic
-
-# Expose metrics port (if you add metrics endpoint in the future)
-EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run the application
 CMD ["./monic"]
