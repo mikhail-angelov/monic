@@ -31,7 +31,7 @@ WORKDIR /app
 COPY --from=builder /app/monic .
 
 # Create log directory
-RUN mkdir -p /var/log && chown monic:monic /var/log
+RUN mkdir -p /var/log 
 
 # Run the application
 CMD ["./monic"]
