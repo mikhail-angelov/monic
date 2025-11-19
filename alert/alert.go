@@ -62,6 +62,13 @@ func (am *AlertManager) SendAlert(alert types.Alert) error {
 		}
 	}
 
+	// Send via Telegram if enabled
+	if am.config.Telegram.Enabled {
+		if err := am.sendTelegram(alert); err != nil {
+			errors = append(errors, fmt.Sprintf("telegram: %v", err))
+		}
+	}
+
 	// Update last sent time
 	am.lastSent[alert.Type] = time.Now()
 
@@ -259,6 +266,53 @@ func (am *AlertManager) sendMailgun(alert types.Alert) error {
 	return nil
 }
 
+// sendTelegram sends an alert via Telegram Bot API
+func (am *AlertManager) sendTelegram(alert types.Alert) error {
+	telegramConfig := am.config.Telegram
+
+	// Validate Telegram configuration
+	if telegramConfig.BotToken == "" {
+		return fmt.Errorf("Telegram bot token must be configured")
+	}
+	if telegramConfig.ChatID == "" {
+		return fmt.Errorf("Telegram chat ID must be configured")
+	}
+
+	// Build message
+	appName := am.getAppName()
+	message := fmt.Sprintf("<b>[%s Alert] %s - %s</b>\n\n", appName, strings.ToUpper(alert.Level), alert.Type)
+	message += fmt.Sprintf("Message: %s\n", alert.Message)
+	message += fmt.Sprintf("Time: %s", alert.Timestamp.Format(time.RFC1123))
+
+	// Create request URL
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", telegramConfig.BotToken)
+
+	// Create request body
+	reqBody := map[string]string{
+		"chat_id":    telegramConfig.ChatID,
+		"text":       message,
+		"parse_mode": "HTML",
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Telegram request: %w", err)
+	}
+
+	// Send request
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("Telegram API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
 // buildEmailBody creates the email body for an alert
 func (am *AlertManager) buildEmailBody(alert types.Alert) string {
 	var body strings.Builder
@@ -331,8 +385,18 @@ func (am *AlertManager) ValidateConfig() error {
 		}
 	}
 
+	// Validate Telegram configuration if enabled
+	if am.config.Telegram.Enabled {
+		if am.config.Telegram.BotToken == "" {
+			return fmt.Errorf("bot token is required for Telegram alerts")
+		}
+		if am.config.Telegram.ChatID == "" {
+			return fmt.Errorf("chat ID is required for Telegram alerts")
+		}
+	}
+
 	// Validate that at least one alerting method is configured if enabled
-	if am.config.Enabled && !am.config.Email.Enabled && !am.config.Mailgun.Enabled {
+	if am.config.Enabled && !am.config.Email.Enabled && !am.config.Mailgun.Enabled && !am.config.Telegram.Enabled {
 		return fmt.Errorf("alerting is enabled but no alerting methods are configured")
 	}
 

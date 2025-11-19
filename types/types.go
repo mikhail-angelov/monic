@@ -41,8 +41,9 @@ type LoggingConfig struct {
 // AlertingConfig contains alert notification settings
 type AlertingConfig struct {
 	Enabled     bool          `json:"enabled"`
-	Email       EmailConfig   `json:"email"`
-	Mailgun     MailgunConfig `json:"mailgun"`
+	Email       EmailConfig    `json:"email"`
+	Mailgun     MailgunConfig  `json:"mailgun"`
+	Telegram    TelegramConfig `json:"telegram"`
 	AlertLevels []string      `json:"alert_levels"` // info, warning, critical
 	Cooldown    int           `json:"cooldown"`     // minutes between repeated alerts
 }
@@ -67,6 +68,13 @@ type MailgunConfig struct {
 	From    string `json:"from"`
 	To      string `json:"to"`
 	BaseURL string `json:"base_url"` // Default: "https://api.mailgun.net/v3"
+}
+
+// TelegramConfig contains Telegram bot settings
+type TelegramConfig struct {
+	Enabled  bool   `json:"enabled"`
+	BotToken string `json:"bot_token"`
+	ChatID   string `json:"chat_id"`
 }
 
 // SystemStats contains collected system statistics
