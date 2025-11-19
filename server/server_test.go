@@ -71,6 +71,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	// Create a test request
 	req := httptest.NewRequest("GET", "/stats", nil)
 	req.SetBasicAuth("admin", "monic123")
+	req.Header.Set("Accept", "application/json")
 
 	// Create a response recorder
 	w := httptest.NewRecorder()
@@ -128,6 +129,39 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 	if int(alertsData["active_alerts"].(float64)) != 1 {
 		t.Errorf("Expected 1 active alert, got %v", alertsData["active_alerts"])
+	}
+}
+
+func TestStatsServer_HandleStats_HTML(t *testing.T) {
+	config := &types.HTTPServerConfig{
+		Enabled:  true,
+		Port:     8080,
+		Username: "admin",
+		Password: "monic123",
+	}
+
+	server := NewStatsServer(config, nil, nil, nil, nil, nil)
+
+	// Create a test request (default Accept header)
+	req := httptest.NewRequest("GET", "/stats", nil)
+	req.SetBasicAuth("admin", "monic123")
+
+	w := httptest.NewRecorder()
+	server.handleStats(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "text/html" {
+		t.Errorf("Expected content type 'text/html', got '%s'", contentType)
+	}
+
+	// Check for HTML content
+	body := w.Body.String()
+	if !json.Valid([]byte(body)) && body == "" {
+		t.Error("Expected non-empty body")
 	}
 }
 

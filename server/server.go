@@ -93,13 +93,19 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := s.getStatsResponse()
-	w.Header().Set("Content-Type", "application/json")
-
-	if err := json.NewEncoder(w).Encode(stats); err != nil {
-		log.Printf("Error encoding stats response: %v", err)
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	
+	// Check if client explicitly requests JSON
+	if r.Header.Get("Accept") == "application/json" {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(stats); err != nil {
+			log.Printf("Error encoding stats response: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
+
+	// Otherwise serve HTML
+	renderStatsHTML(w, stats)
 }
 
 // getStatsResponse builds the complete stats response
