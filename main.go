@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -45,15 +45,21 @@ func main() {
 		configPath = os.Args[1]
 	}
 
+	// Configure structured logging
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	config, err := loadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		slog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
 	}
 
 	// Create and start monitoring service
 	service := server.NewMonitorService(config)
 	if err := service.Start(); err != nil {
-		log.Fatalf("Failed to start monitoring service: %v", err)
+		slog.Error("Failed to start monitoring service", "error", err)
+		os.Exit(1)
 	}
 
 	// Handle graceful shutdown
@@ -62,5 +68,5 @@ func main() {
 
 	<-sigChan
 	service.Stop()
-	log.Println("Monic monitoring service shutdown complete")
+	slog.Info("Monic monitoring service shutdown complete")
 }

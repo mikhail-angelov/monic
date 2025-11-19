@@ -5,7 +5,8 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/smtp"
 	"strings"
@@ -46,37 +47,40 @@ func (am *AlertManager) SendAlert(alert types.Alert) error {
 		return nil
 	}
 
-	var errors []string
+	var errs []string
 
 	// Send via SMTP email if enabled
 	if am.config.Email.Enabled {
 		if err := am.sendEmail(alert); err != nil {
-			errors = append(errors, fmt.Sprintf("email: %v", err))
+			slog.Error("Failed to send email alert", "error", err)
+			errs = append(errs, fmt.Sprintf("email: %v", err))
 		}
 	}
 
 	// Send via Mailgun if enabled
 	if am.config.Mailgun.Enabled {
 		if err := am.sendMailgun(alert); err != nil {
-			errors = append(errors, fmt.Sprintf("mailgun: %v", err))
+			slog.Error("Failed to send Mailgun alert", "error", err)
+			errs = append(errs, fmt.Sprintf("mailgun: %v", err))
 		}
 	}
 
 	// Send via Telegram if enabled
 	if am.config.Telegram.Enabled {
 		if err := am.sendTelegram(alert); err != nil {
-			errors = append(errors, fmt.Sprintf("telegram: %v", err))
+			slog.Error("Failed to send Telegram alert", "error", err)
+			errs = append(errs, fmt.Sprintf("telegram: %v", err))
 		}
 	}
 
 	// Update last sent time
 	am.lastSent[alert.Type] = time.Now()
 
-	if len(errors) > 0 {
-		return fmt.Errorf("failed to send alerts: %s", strings.Join(errors, "; "))
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to send alerts: %s", strings.Join(errs, "; "))
 	}
 
-	log.Printf("Alert sent: [%s] %s", alert.Level, alert.Message)
+	slog.Info("Alert sent", "level", alert.Level, "message", alert.Message)
 	return nil
 }
 
@@ -184,12 +188,14 @@ func (am *AlertManager) sendEmail(alert types.Alert) error {
 		if err != nil {
 			return fmt.Errorf("SMTP message write failed: %w", err)
 		}
+		slog.Info("Email alert sent (TLS)", "recipient", emailConfig.To)
 	} else {
 		// Use plain SMTP
 		err := smtp.SendMail(addr, auth, emailConfig.From, []string{emailConfig.To}, []byte(message))
 		if err != nil {
 			return fmt.Errorf("SMTP send failed: %w", err)
 		}
+		slog.Info("Email alert sent (plain SMTP)", "recipient", emailConfig.To)
 	}
 
 	return nil
@@ -260,9 +266,11 @@ func (am *AlertManager) sendMailgun(alert types.Alert) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Mailgun API returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("mailgun API returned status %s: %s", resp.Status, string(body))
 	}
 
+	slog.Info("Mailgun alert sent", "recipient", am.config.Mailgun.To)
 	return nil
 }
 

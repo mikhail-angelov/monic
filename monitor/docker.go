@@ -3,7 +3,7 @@ package monitor
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"bconf.com/monic/types"
@@ -31,20 +31,26 @@ func (dm *DockerMonitor) Initialize() error {
 		return nil
 	}
 
+	// Initialize Docker client
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
+		slog.Error("Failed to create Docker client", "error", err)
 		return fmt.Errorf("failed to create Docker client: %w", err)
 	}
 
 	dm.client = cli
 
 	// Test connection
-	_, err = dm.client.Ping(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = cli.Ping(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to Docker daemon: %w", err)
+		slog.Error("Failed to ping Docker daemon", "error", err)
+		return fmt.Errorf("failed to ping Docker daemon: %w", err)
 	}
 
-	log.Println("Docker monitor initialized successfully")
+	slog.Info("Docker monitor initialized successfully")
 	return nil
 }
 
@@ -110,7 +116,7 @@ func (dm *DockerMonitor) CheckContainers() ([]types.DockerContainerStats, error)
 				}
 			}
 		} else {
-			log.Printf("Warning: failed to inspect container %s: %v", c.ID[:12], err)
+			slog.Warn("Warning: failed to inspect container", "id", c.ID[:12], "error", err)
 		}
 
 		stats = append(stats, containerStats)

@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -38,7 +38,7 @@ func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.Syste
 // Start starts the HTTP stats server
 func (s *StatsServer) Start() error {
 	if !s.config.Enabled {
-		log.Println("HTTP stats server is disabled")
+		slog.Info("HTTP stats server is disabled")
 		return nil
 	}
 
@@ -50,10 +50,10 @@ func (s *StatsServer) Start() error {
 		Handler: mux,
 	}
 
-	log.Printf("Starting HTTP stats server on port %d", s.config.Port)
+	slog.Info("Starting HTTP stats server", "port", s.config.Port)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("HTTP stats server error: %v", err)
+			slog.Error("HTTP stats server failed", "error", err)
 		}
 	}()
 
@@ -98,8 +98,9 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(stats); err != nil {
-			log.Printf("Error encoding stats response: %v", err)
+			slog.Error("Error encoding stats response", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
 		}
 		return
 	}

@@ -2,7 +2,7 @@ package server
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -61,7 +61,7 @@ func NewMonitorService(config *types.Config) *MonitorService {
 
 // Start begins the monitoring service
 func (ms *MonitorService) Start() error {
-	log.Println("Starting Monic monitoring service...")
+	slog.Info("Starting Monic monitoring service...")
 
 	// Validate HTTP checks configuration
 	for _, check := range ms.config.HTTPChecks {
@@ -82,12 +82,12 @@ func (ms *MonitorService) Start() error {
 
 	// Print system information
 	systemInfo := ms.systemMonitor.GetSystemInfo()
-	log.Printf("System Info: %+v\n", systemInfo)
+	slog.Info("System Info", "info", systemInfo)
 
 	// Initialize Docker monitor if enabled
 	if ms.config.DockerChecks.Enabled {
 		if err := ms.dockerMonitor.Initialize(); err != nil {
-			log.Printf("Warning: Failed to initialize Docker monitor: %v", err)
+			slog.Warn("Failed to initialize Docker monitor", "error", err)
 		} else {
 			ms.wg.Add(1)
 			go ms.dockerMonitoringLoop()
@@ -100,16 +100,16 @@ func (ms *MonitorService) Start() error {
 	go ms.httpMonitoringLoop()
 	go ms.alertProcessingLoop()
 
-	log.Println("Monic monitoring service started successfully")
+	slog.Info("Monic monitoring service started successfully")
 	return nil
 }
 
 // Stop gracefully stops the monitoring service
 func (ms *MonitorService) Stop() {
-	log.Println("Stopping Monic monitoring service...")
+	slog.Info("Stopping Monic monitoring service...")
 	close(ms.stopChan)
 	ms.wg.Wait()
-	log.Println("Monic monitoring service stopped")
+	slog.Info("Monic monitoring service stopped")
 }
 
 // systemMonitoringLoop handles system resource monitoring
@@ -189,7 +189,7 @@ func (ms *MonitorService) alertProcessingLoop() {
 func (ms *MonitorService) collectSystemStats() {
 	stats, err := ms.systemMonitor.CollectStats()
 	if err != nil {
-		log.Printf("Error collecting system stats: %v\n", err)
+		slog.Error("Error collecting system stats", "error", err)
 		return
 	}
 
@@ -203,14 +203,14 @@ func (ms *MonitorService) collectSystemStats() {
 	alerts := ms.stateManager.UpdateSystemState(stats, &ms.config.SystemChecks)
 	if len(alerts) > 0 {
 		ms.alerts = append(ms.alerts, alerts...)
-		log.Printf("System alerts generated: %d\n", len(alerts))
+		slog.Info("System alerts generated", "count", len(alerts))
 	}
 
 	// Log current stats (in production, this would go to a proper logging system)
-	log.Printf("System Stats - CPU: %.2f%%, Memory: %.2f%%, Disk: %v\n",
-		stats.CPUUsage,
-		stats.MemoryUsage.UsedPercent,
-		ms.getDiskUsageSummary(stats.DiskUsage))
+	slog.Info("System Stats",
+		"cpu", fmt.Sprintf("%.2f%%", stats.CPUUsage),
+		"memory", fmt.Sprintf("%.2f%%", stats.MemoryUsage.UsedPercent),
+		"disk", ms.getDiskUsageSummary(stats.DiskUsage))
 }
 
 // collectHTTPStats collects and processes HTTP monitoring statistics
@@ -227,23 +227,23 @@ func (ms *MonitorService) collectHTTPStats() {
 	alerts := ms.stateManager.UpdateHTTPState(results)
 	if len(alerts) > 0 {
 		ms.alerts = append(ms.alerts, alerts...)
-		log.Printf("HTTP alerts generated: %d\n", len(alerts))
+		slog.Info("HTTP alerts generated", "count", len(alerts))
 	}
 
 	// Log HTTP stats
 	httpStats := ms.httpMonitor.GetHTTPStats(results)
-	log.Printf("HTTP Stats - Total: %d, Success: %d, Failed: %d, Success Rate: %.1f%%\n",
-		httpStats["total_checks"],
-		httpStats["successful_checks"],
-		httpStats["failed_checks"],
-		httpStats["success_rate"])
+	slog.Info("HTTP Stats",
+		"total", httpStats["total_checks"],
+		"success", httpStats["successful_checks"],
+		"failed", httpStats["failed_checks"],
+		"rate", fmt.Sprintf("%.1f%%", httpStats["success_rate"]))
 }
 
 // collectDockerStats collects and processes Docker container statistics
 func (ms *MonitorService) collectDockerStats() {
 	stats, err := ms.dockerMonitor.CheckContainers()
 	if err != nil {
-		log.Printf("Error collecting Docker stats: %v\n", err)
+		slog.Error("Error collecting Docker stats", "error", err)
 		return
 	}
 
@@ -256,19 +256,19 @@ func (ms *MonitorService) collectDockerStats() {
 	// Check for container status alerts
 	alerts, err := ms.dockerMonitor.CheckContainerStatus()
 	if err != nil {
-		log.Printf("Error checking Docker container status: %v\n", err)
+		slog.Error("Error checking Docker container status", "error", err)
 	} else if len(alerts) > 0 {
 		ms.alerts = append(ms.alerts, alerts...)
-		log.Printf("Docker alerts generated: %d\n", len(alerts))
+		slog.Info("Docker alerts generated", "count", len(alerts))
 	}
 
 	// Log Docker stats
 	summary := ms.dockerMonitor.GetContainerSummary(stats)
-	log.Printf("Docker Stats - Total: %v, Running: %v, Stopped: %v, Running: %.1f%%\n",
-		summary["total_containers"],
-		summary["running_containers"],
-		summary["stopped_containers"],
-		summary["running_percentage"])
+	slog.Info("Docker Stats",
+		"total", summary["total_containers"],
+		"running", summary["running_containers"],
+		"stopped", summary["stopped_containers"],
+		"percentage", fmt.Sprintf("%.1f%%", summary["running_percentage"]))
 }
 
 // processAlerts processes and reports alerts
@@ -279,12 +279,12 @@ func (ms *MonitorService) processAlerts() {
 
 	// Log alerts to console
 	for _, alert := range ms.alerts {
-		log.Printf("ALERT [%s] %s: %s\n", alert.Level, alert.Type, alert.Message)
+		slog.Info("ALERT", "level", alert.Level, "type", alert.Type, "message", alert.Message)
 	}
 
 	// Send alerts via configured channels (email, Mailgun, etc.)
 	if err := ms.alertManager.SendAlerts(ms.alerts); err != nil {
-		log.Printf("Failed to send some alerts: %v\n", err)
+		slog.Error("Failed to send some alerts", "error", err)
 	}
 
 	// Clear processed alerts

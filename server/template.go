@@ -2,23 +2,30 @@ package server
 
 import (
 	"html/template"
-	"log"
+	"log/slog"
 	"net/http"
 )
+
+// funcMap defines template helper functions
+var funcMap = template.FuncMap{
+	"ge": func(a, b float64) bool {
+		return a >= b
+	},
+}
 
 // renderStatsHTML renders the stats page using the HTML template
 func renderStatsHTML(w http.ResponseWriter, stats map[string]interface{}) {
 	w.Header().Set("Content-Type", "text/html")
 
-	tmpl, err := template.New("stats").Parse(htmlTemplate)
+	tmpl, err := template.New("stats").Funcs(funcMap).Parse(htmlTemplate)
 	if err != nil {
-		log.Printf("Error parsing template: %v", err)
+		slog.Error("Error parsing HTML template", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if err := tmpl.Execute(w, stats); err != nil {
-		log.Printf("Error executing template: %v", err)
+		slog.Error("Error executing HTML template", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}

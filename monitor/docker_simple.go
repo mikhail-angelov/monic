@@ -1,9 +1,10 @@
 package monitor
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os/exec"
 	"strings"
 	"time"
@@ -29,13 +30,21 @@ func (dm *SimpleDockerMonitor) Initialize() error {
 		return nil
 	}
 
-	// Check if Docker CLI is available
-	cmd := exec.Command("docker", "version", "--format", "{{.Server.Version}}")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("Docker CLI not available or Docker daemon not running: %w", err)
+	// Check if docker command exists
+	_, err := exec.LookPath("docker")
+	if err != nil {
+		slog.Warn("Docker command not found, Docker monitoring will be disabled")
+		return fmt.Errorf("docker command not found: %w", err)
 	}
 
-	log.Println("Simple Docker monitor initialized successfully")
+	// Test connection
+	cmd := exec.CommandContext(context.Background(), "docker", "info")
+	if err := cmd.Run(); err != nil {
+		slog.Error("Failed to connect to Docker daemon", "error", err)
+		return fmt.Errorf("failed to connect to Docker daemon: %w", err)
+	}
+
+	slog.Info("Docker monitor initialized successfully (CLI mode)")
 	return nil
 }
 
@@ -64,7 +73,7 @@ func (dm *SimpleDockerMonitor) CheckContainers() ([]types.DockerContainerStats, 
 
 		var containerData map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &containerData); err != nil {
-			log.Printf("Warning: failed to parse container JSON: %v", err)
+			slog.Warn("Warning: failed to parse container JSON", "error", err)
 			continue
 		}
 
