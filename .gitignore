@@ -29,7 +29,9 @@ Thumbs.db
 
 # Docker
 *.env
+.env
 .env.*
+!.env.example
 
 # Node/npm (if any JS tooling)
 node_modules/

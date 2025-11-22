@@ -4,21 +4,21 @@ import "time"
 
 // Config represents the main configuration structure
 type Config struct {
-	AppName      string             `json:"app_name"`
-	SystemChecks SystemChecksConfig `json:"system_checks"`
-	HTTPChecks   []HTTPCheck        `json:"http_checks"`
-	Alerting     AlertingConfig     `json:"alerting"`
-	DockerChecks DockerConfig       `json:"docker_checks"`
-	HTTPServer   HTTPServerConfig   `json:"http_server"`
+	AppName      string             `json:"app_name" envconfig:"APP_NAME"`
+	SystemChecks SystemChecksConfig `json:"system_checks" envconfig:"SYSTEM_CHECKS"`
+	HTTPChecks   []HTTPCheck        `json:"http_checks" envconfig:"HTTP_CHECKS"`
+	Alerting     AlertingConfig     `json:"alerting" envconfig:"ALERTING"`
+	DockerChecks DockerConfig       `json:"docker_checks" envconfig:"DOCKER_CHECKS"`
+	HTTPServer   HTTPServerConfig   `json:"http_server" envconfig:"HTTP_SERVER"`
 }
 
 // SystemChecksConfig contains system monitoring settings
 type SystemChecksConfig struct {
-	Interval        int      `json:"interval"`
-	CPUThreshold    int      `json:"cpu_threshold"`
-	MemoryThreshold int      `json:"memory_threshold"`
-	DiskThreshold   int      `json:"disk_threshold"`
-	DiskPaths       []string `json:"disk_paths"`
+	Interval        int      `json:"interval" envconfig:"INTERVAL"`
+	CPUThreshold    int      `json:"cpu_threshold" envconfig:"CPU_THRESHOLD"`
+	MemoryThreshold int      `json:"memory_threshold" envconfig:"MEMORY_THRESHOLD"`
+	DiskThreshold   int      `json:"disk_threshold" envconfig:"DISK_THRESHOLD"`
+	DiskPaths       []string `json:"disk_paths" envconfig:"DISK_PATHS"`
 }
 
 // HTTPCheck defines a single HTTP/HTTPS endpoint to monitor
@@ -34,47 +34,47 @@ type HTTPCheck struct {
 
 // LoggingConfig contains logging settings
 type LoggingConfig struct {
-	Level string `json:"level"`
-	File  string `json:"file"`
+	Level string `json:"level" envconfig:"LEVEL"`
+	File  string `json:"file" envconfig:"FILE"`
 }
 
 // AlertingConfig contains alert notification settings
 type AlertingConfig struct {
-	Enabled     bool          `json:"enabled"`
-	Email       EmailConfig    `json:"email"`
-	Mailgun     MailgunConfig  `json:"mailgun"`
-	Telegram    TelegramConfig `json:"telegram"`
-	AlertLevels []string      `json:"alert_levels"` // info, warning, critical
-	Cooldown    int           `json:"cooldown"`     // minutes between repeated alerts
+	Enabled     bool           `json:"enabled" envconfig:"ENABLED"`
+	Email       EmailConfig    `json:"email" envconfig:"EMAIL"`
+	Mailgun     MailgunConfig  `json:"mailgun" envconfig:"MAILGUN"`
+	Telegram    TelegramConfig `json:"telegram" envconfig:"TELEGRAM"`
+	AlertLevels []string       `json:"alert_levels" envconfig:"ALERT_LEVELS"` // info, warning, critical
+	Cooldown    int            `json:"cooldown" envconfig:"COOLDOWN"`         // minutes between repeated alerts
 }
 
 // EmailConfig contains SMTP email settings
 type EmailConfig struct {
-	Enabled  bool   `json:"enabled"`
-	SMTPHost string `json:"smtp_host"`
-	SMTPPort int    `json:"smtp_port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	From     string `json:"from"`
-	To       string `json:"to"`
-	UseTLS   bool   `json:"use_tls"`
+	Enabled  bool   `json:"enabled" envconfig:"ENABLED"`
+	SMTPHost string `json:"smtp_host" envconfig:"SMTP_HOST"`
+	SMTPPort int    `json:"smtp_port" envconfig:"SMTP_PORT"`
+	Username string `json:"username" envconfig:"USERNAME"`
+	Password string `json:"password" envconfig:"PASSWORD"`
+	From     string `json:"from" envconfig:"FROM"`
+	To       string `json:"to" envconfig:"TO"`
+	UseTLS   bool   `json:"use_tls" envconfig:"USE_TLS"`
 }
 
 // MailgunConfig contains Mailgun API settings
 type MailgunConfig struct {
-	Enabled bool   `json:"enabled"`
-	APIKey  string `json:"api_key"`
-	Domain  string `json:"domain"`
-	From    string `json:"from"`
-	To      string `json:"to"`
-	BaseURL string `json:"base_url"` // Default: "https://api.mailgun.net/v3"
+	Enabled bool   `json:"enabled" envconfig:"ENABLED"`
+	APIKey  string `json:"api_key" envconfig:"API_KEY"`
+	Domain  string `json:"domain" envconfig:"DOMAIN"`
+	From    string `json:"from" envconfig:"FROM"`
+	To      string `json:"to" envconfig:"TO"`
+	BaseURL string `json:"base_url" envconfig:"BASE_URL"` // Default: "https://api.mailgun.net/v3"
 }
 
 // TelegramConfig contains Telegram bot settings
 type TelegramConfig struct {
-	Enabled  bool   `json:"enabled"`
-	BotToken string `json:"bot_token"`
-	ChatID   string `json:"chat_id"`
+	Enabled  bool   `json:"enabled" envconfig:"ENABLED"`
+	BotToken string `json:"bot_token" envconfig:"BOT_TOKEN"`
+	ChatID   string `json:"chat_id" envconfig:"CHAT_ID"`
 }
 
 // SystemStats contains collected system statistics
@@ -132,9 +132,9 @@ type AlertState struct {
 
 // DockerConfig contains Docker container monitoring settings
 type DockerConfig struct {
-	Enabled       bool     `json:"enabled"`
-	CheckInterval int      `json:"check_interval"`
-	Containers    []string `json:"containers"` // Specific containers to monitor, empty for all
+	Enabled       bool     `json:"enabled" envconfig:"ENABLED"`
+	CheckInterval int      `json:"check_interval" envconfig:"CHECK_INTERVAL"`
+	Containers    []string `json:"containers" envconfig:"CONTAINERS"` // Specific containers to monitor, empty for all
 }
 
 // DockerContainerStats contains Docker container status information
@@ -154,8 +154,8 @@ type DockerContainerStats struct {
 
 // HTTPServerConfig contains HTTP server settings for stats endpoint
 type HTTPServerConfig struct {
-	Enabled  bool   `json:"enabled"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Enabled  bool   `json:"enabled" envconfig:"ENABLED"`
+	Port     int    `json:"port" envconfig:"PORT"`
+	Username string `json:"username" envconfig:"USERNAME"`
+	Password string `json:"password" envconfig:"PASSWORD"`
 }

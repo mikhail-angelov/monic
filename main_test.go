@@ -69,9 +69,31 @@ func TestLoadConfig(t *testing.T) {
 }
 
 func TestLoadConfig_FileNotFound(t *testing.T) {
+	// Should not return error if config file is missing (env vars might be used)
 	_, err := loadConfig("/non/existent/path/config.json")
-	if err == nil {
-		t.Error("Expected error for non-existent config file")
+	if err != nil {
+		t.Errorf("Expected no error for non-existent config file, got: %v", err)
+	}
+}
+
+func TestLoadConfig_EnvOverride(t *testing.T) {
+	// Set environment variables
+	os.Setenv("MONIC_APP_NAME", "EnvApp")
+	os.Setenv("MONIC_SYSTEM_CHECKS_INTERVAL", "60")
+	defer os.Unsetenv("MONIC_APP_NAME")
+	defer os.Unsetenv("MONIC_SYSTEM_CHECKS_INTERVAL")
+
+	// Load config (no file)
+	config, err := loadConfig("")
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	if config.AppName != "EnvApp" {
+		t.Errorf("Expected AppName 'EnvApp', got '%s'", config.AppName)
+	}
+	if config.SystemChecks.Interval != 60 {
+		t.Errorf("Expected Interval 60, got %d", config.SystemChecks.Interval)
 	}
 }
 

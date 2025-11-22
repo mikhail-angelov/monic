@@ -10,23 +10,38 @@ import (
 
 	"bconf.com/monic/server"
 	"bconf.com/monic/types"
+
+	"github.com/joho/godotenv"
+	"github.com/kelseyhightower/envconfig"
 )
 
-// loadConfig loads configuration from JSON file
+// loadConfig loads configuration from JSON file and environment variables
 func loadConfig(configPath string) (*types.Config, error) {
+	config := &types.Config{}
+
+	// 1. Load from JSON file (Optional/Fallback)
 	file, err := os.Open(configPath)
-	if err != nil {
+	if err == nil {
+		defer file.Close()
+		decoder := json.NewDecoder(file)
+		if err := decoder.Decode(config); err != nil {
+			return nil, fmt.Errorf("failed to decode config file: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		// Return error if file exists but cannot be opened
 		return nil, fmt.Errorf("failed to open config file: %w", err)
 	}
-	defer file.Close()
 
-	var config types.Config
-	decoder := json.NewDecoder(file)
-	if err := decoder.Decode(&config); err != nil {
-		return nil, fmt.Errorf("failed to decode config: %w", err)
+	// 2. Load .env file (Optional)
+	// It's okay if .env doesn't exist
+	_ = godotenv.Load()
+
+	// 3. Override with Environment Variables
+	if err := envconfig.Process("MONIC", config); err != nil {
+		return nil, fmt.Errorf("failed to process environment variables: %w", err)
 	}
 
-	return &config, nil
+	return config, nil
 }
 
 // version will be set during build
