@@ -390,30 +390,12 @@ The version is set during build and is included in Docker images when built via 
    - Check SMTP/Mailgun/Telegram credentials
    - Verify network connectivity for alert sending
 
-6. **Docker monitoring permission denied**
-   - Check Docker socket permissions on host
-   - Ensure user is in docker group
-   - See detailed guide in `docker-permission-fix.md`
-
 ### Logs
 
 Check container logs:
 ```bash
 docker logs monic-monitor
 ```
-
-## Docker Permission Issues
-
-If you encounter Docker permission errors when trying to monitor Docker containers, please refer to the detailed troubleshooting guide:
-
-[**Docker Permission Fix Guide**](docker-permission-fix.md)
-
-This guide provides step-by-step solutions for common Docker socket permission issues, including:
-
-- Checking and fixing Docker socket permissions
-- Adding users to the docker group
-- User ID mapping in containers
-- Alternative solutions for different scenarios
 
 ## License
 
