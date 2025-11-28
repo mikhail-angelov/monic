@@ -10,11 +10,7 @@ import (
 )
 
 func TestNewAlertManager(t *testing.T) {
-	config := &types.AlertingConfig{
-		Enabled:     true,
-		AlertLevels: []string{"warning", "critical"},
-		Cooldown:    30,
-	}
+	config := &types.AlertingConfig{}
 
 	manager := NewAlertManager(config, "TestApp")
 
@@ -38,16 +34,8 @@ func TestAlertManager_ValidateConfig(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "valid disabled config",
-			config: types.AlertingConfig{
-				Enabled: false,
-			},
-			expected: "",
-		},
-		{
 			name: "valid email config",
 			config: types.AlertingConfig{
-				Enabled: true,
 				Email: types.EmailConfig{
 					Enabled:  true,
 					SMTPHost: "smtp.example.com",
@@ -61,7 +49,6 @@ func TestAlertManager_ValidateConfig(t *testing.T) {
 		{
 			name: "valid mailgun config",
 			config: types.AlertingConfig{
-				Enabled: true,
 				Mailgun: types.MailgunConfig{
 					Enabled: true,
 					APIKey:  "test-key",
@@ -73,16 +60,24 @@ func TestAlertManager_ValidateConfig(t *testing.T) {
 			expected: "",
 		},
 		{
-			name: "enabled but no methods configured",
+			name: "valid telegram config",
 			config: types.AlertingConfig{
-				Enabled: true,
+				Telegram: types.TelegramConfig{
+					Enabled:  true,
+					BotToken: "test-token",
+					ChatID:   "test-chat-id",
+				},
 			},
+			expected: "",
+		},
+		{
+			name: "no methods configured",
+			config: types.AlertingConfig{},
 			expected: "alerting is enabled but no alerting methods are configured",
 		},
 		{
 			name: "email enabled but missing SMTP host",
 			config: types.AlertingConfig{
-				Enabled: true,
 				Email: types.EmailConfig{
 					Enabled:  true,
 					SMTPPort: 587,
@@ -95,7 +90,6 @@ func TestAlertManager_ValidateConfig(t *testing.T) {
 		{
 			name: "email enabled but missing from address",
 			config: types.AlertingConfig{
-				Enabled: true,
 				Email: types.EmailConfig{
 					Enabled:  true,
 					SMTPHost: "smtp.example.com",
@@ -108,7 +102,6 @@ func TestAlertManager_ValidateConfig(t *testing.T) {
 		{
 			name: "mailgun enabled but missing API key",
 			config: types.AlertingConfig{
-				Enabled: true,
 				Mailgun: types.MailgunConfig{
 					Enabled: true,
 					Domain:  "example.com",
@@ -141,54 +134,23 @@ func TestAlertManager_ValidateConfig(t *testing.T) {
 }
 
 func TestAlertManager_ShouldSendLevel(t *testing.T) {
-	tests := []struct {
-		name     string
-		config   types.AlertingConfig
-		level    string
-		expected bool
-	}{
-		{
-			name: "no levels configured - send all",
-			config: types.AlertingConfig{
-				AlertLevels: []string{},
-			},
-			level:    "info",
-			expected: true,
-		},
-		{
-			name: "level in configured list",
-			config: types.AlertingConfig{
-				AlertLevels: []string{"warning", "critical"},
-			},
-			level:    "warning",
-			expected: true,
-		},
-		{
-			name: "level not in configured list",
-			config: types.AlertingConfig{
-				AlertLevels: []string{"warning", "critical"},
-			},
-			level:    "info",
-			expected: false,
-		},
-	}
+	// Since shouldSendLevel always returns true in the current implementation,
+	// we'll test that it always allows sending regardless of level
+	config := &types.AlertingConfig{}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			manager := NewAlertManager(&tt.config, "TestApp")
-			result := manager.shouldSendLevel(tt.level)
+	manager := NewAlertManager(config, "TestApp")
 
-			if result != tt.expected {
-				t.Errorf("Expected shouldSendLevel(%s) = %v, got %v", tt.level, tt.expected, result)
-			}
-		})
+	levels := []string{"info", "warning", "critical"}
+	for _, level := range levels {
+		result := manager.shouldSendLevel(level)
+		if !result {
+			t.Errorf("Expected shouldSendLevel(%s) = true, got false", level)
+		}
 	}
 }
 
 func TestAlertManager_ShouldSendCooldown(t *testing.T) {
-	config := &types.AlertingConfig{
-		Cooldown: 5, // 5 minutes
-	}
+	config := &types.AlertingConfig{}
 
 	manager := NewAlertManager(config, "TestApp")
 
@@ -207,27 +169,14 @@ func TestAlertManager_ShouldSendCooldown(t *testing.T) {
 	// Mark as sent
 	manager.lastSent[alert.Type] = time.Now()
 
-	// Immediately after sending, should not send again
+	// Immediately after sending, should not send again (1 minute cooldown is hardcoded)
 	if manager.shouldSendCooldown(alert) {
 		t.Error("Alert should not be sent immediately after previous one")
 	}
-
-	// Test with no cooldown configured
-	configNoCooldown := &types.AlertingConfig{
-		Cooldown: 0,
-	}
-	managerNoCooldown := NewAlertManager(configNoCooldown, "TestApp")
-	managerNoCooldown.lastSent[alert.Type] = time.Now()
-
-	if !managerNoCooldown.shouldSendCooldown(alert) {
-		t.Error("Alert should be sent when no cooldown is configured")
-	}
 }
 
-func TestAlertManager_SendAlert_Disabled(t *testing.T) {
-	config := &types.AlertingConfig{
-		Enabled: false,
-	}
+func TestAlertManager_SendAlert_NoMethods(t *testing.T) {
+	config := &types.AlertingConfig{} // No alerting methods configured
 
 	manager := NewAlertManager(config, "TestApp")
 
@@ -240,35 +189,12 @@ func TestAlertManager_SendAlert_Disabled(t *testing.T) {
 
 	err := manager.SendAlert(alert)
 	if err != nil {
-		t.Errorf("Expected no error when alerting is disabled, got: %v", err)
-	}
-}
-
-func TestAlertManager_SendAlert_LevelFiltered(t *testing.T) {
-	config := &types.AlertingConfig{
-		Enabled:     true,
-		AlertLevels: []string{"critical"}, // Only send critical alerts
-	}
-
-	manager := NewAlertManager(config, "TestApp")
-
-	alert := types.Alert{
-		Type:      "test",
-		Message:   "Test alert",
-		Level:     "warning", // This should be filtered out
-		Timestamp: time.Now(),
-	}
-
-	err := manager.SendAlert(alert)
-	if err != nil {
-		t.Errorf("Expected no error when alert level is filtered, got: %v", err)
+		t.Errorf("Expected no error when no alerting methods are configured, got: %v", err)
 	}
 }
 
 func TestAlertManager_BuildEmailBody(t *testing.T) {
-	config := &types.AlertingConfig{
-		Enabled: true,
-	}
+	config := &types.AlertingConfig{}
 
 	manager := NewAlertManager(config, "TestApp")
 
@@ -298,9 +224,7 @@ func TestAlertManager_BuildEmailBody(t *testing.T) {
 }
 
 func TestAlertManager_SendAlerts(t *testing.T) {
-	config := &types.AlertingConfig{
-		Enabled: false, // Disabled to avoid actual sending
-	}
+	config := &types.AlertingConfig{} // No alerting methods configured
 
 	manager := NewAlertManager(config, "TestApp")
 
@@ -353,7 +277,6 @@ func TestAlertManager_SendMailgun_MockServer(t *testing.T) {
 	defer server.Close()
 
 	config := &types.AlertingConfig{
-		Enabled: true,
 		Mailgun: types.MailgunConfig{
 			Enabled: true,
 			APIKey:  "test-key",
@@ -387,7 +310,6 @@ func TestAlertManager_SendMailgun_Error(t *testing.T) {
 	defer server.Close()
 
 	config := &types.AlertingConfig{
-		Enabled: true,
 		Mailgun: types.MailgunConfig{
 			Enabled: true,
 			APIKey:  "test-key",

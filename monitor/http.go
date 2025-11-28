@@ -42,7 +42,6 @@ func NewHTTPMonitor() *HTTPMonitor {
 // CheckEndpoint performs a single HTTP/HTTPS check
 func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResult {
 	result := types.HTTPCheckResult{
-		Name:      check.Name,
 		URL:       check.URL,
 		Timestamp: time.Now(),
 	}
@@ -138,12 +137,21 @@ func (hm *HTTPMonitor) CheckEndpointsConcurrent(checks []types.HTTPCheck) []type
 	return results
 }
 
+// CheckEndpointConcurrent performs a single HTTP check concurrently
+func (hm *HTTPMonitor) CheckEndpointConcurrent(check types.HTTPCheck) types.HTTPCheckResult {
+	resultChan := make(chan types.HTTPCheckResult, 1)
+
+	go func(c types.HTTPCheck) {
+		result := hm.CheckEndpoint(c)
+		resultChan <- result
+	}(check)
+
+	return <-resultChan
+}
+
 // ValidateHTTPCheck validates if an HTTP check configuration is valid
 func (hm *HTTPMonitor) ValidateHTTPCheck(check types.HTTPCheck) error {
-	if check.Name == "" {
-		return fmt.Errorf("HTTP check name cannot be empty")
-	}
-
+	
 	if check.URL == "" {
 		return fmt.Errorf("URL cannot be empty")
 	}

@@ -64,10 +64,8 @@ func (ms *MonitorService) Start() error {
 	slog.Info("Starting Monic monitoring service...")
 
 	// Validate HTTP checks configuration
-	for _, check := range ms.config.HTTPChecks {
-		if err := ms.httpMonitor.ValidateHTTPCheck(check); err != nil {
-			return fmt.Errorf("invalid HTTP check configuration for %s: %w", check.Name, err)
-		}
+	if err := ms.httpMonitor.ValidateHTTPCheck(ms.config.HTTPChecks); err != nil {
+		return fmt.Errorf("invalid HTTP check configuration for %s: %w", ms.config.HTTPChecks.URL, err)
 	}
 
 	// Validate alerting configuration
@@ -215,10 +213,11 @@ func (ms *MonitorService) collectSystemStats() {
 
 // collectHTTPStats collects and processes HTTP monitoring statistics
 func (ms *MonitorService) collectHTTPStats() {
-	results := ms.httpMonitor.CheckEndpointsConcurrent(ms.config.HTTPChecks)
+	result := ms.httpMonitor.CheckEndpointConcurrent(ms.config.HTTPChecks)
+	results := []types.HTTPCheckResult{result}
 
 	// Add to history (keep last 100 entries)
-	ms.httpHistory = append(ms.httpHistory, results...)
+	ms.httpHistory = append(ms.httpHistory, result)
 	if len(ms.httpHistory) > 100 {
 		ms.httpHistory = ms.httpHistory[len(ms.httpHistory)-100:]
 	}

@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"strconv"
 
 	"bconf.com/monic/types"
 
@@ -26,31 +25,33 @@ func LoadConfig() (*types.Config, error) {
 	// Calculate enabled status based on environment variables
 	config = calculateEnabledStatus(config)
 
-	// Handle single HTTP check from environment variables
-	config = handleHTTPCheckFromEnv(config)
-
 	return config, nil
 }
 
+
 // calculateEnabledStatus determines which features are enabled based on environment variables
 func calculateEnabledStatus(config *types.Config) *types.Config {
-	// Check if alerting is enabled (any alerting environment variables are set)
-	config.Alerting.Enabled = isAlertingEnabled()
+	
+	// Only set enabled status if not already set by envconfig
+	if !config.Alerting.Email.Enabled {
+		config.Alerting.Email.Enabled = isEmailAlertingEnabled()
+	}
 
-	// Check if email alerting is enabled
-	config.Alerting.Email.Enabled = isEmailAlertingEnabled()
+	if !config.Alerting.Mailgun.Enabled {
+		config.Alerting.Mailgun.Enabled = isMailgunAlertingEnabled()
+	}
 
-	// Check if mailgun alerting is enabled
-	config.Alerting.Mailgun.Enabled = isMailgunAlertingEnabled()
+	if !config.Alerting.Telegram.Enabled {
+		config.Alerting.Telegram.Enabled = isTelegramAlertingEnabled()
+	}
 
-	// Check if telegram alerting is enabled
-	config.Alerting.Telegram.Enabled = isTelegramAlertingEnabled()
+	if !config.DockerChecks.Enabled {
+		config.DockerChecks.Enabled = isDockerChecksEnabled()
+	}
 
-	// Check if docker checks are enabled
-	config.DockerChecks.Enabled = isDockerChecksEnabled()
-
-	// Check if HTTP server is enabled
-	config.HTTPServer.Enabled = isHTTPServerEnabled()
+	if !config.HTTPServer.Enabled {
+		config.HTTPServer.Enabled = isHTTPServerEnabled()
+	}
 
 	return config
 }
@@ -98,59 +99,4 @@ func isHTTPServerEnabled() bool {
 	return os.Getenv("MONIC_HTTPSERVER_HTTP_SERVER_PORT") != "" ||
 		os.Getenv("MONIC_HTTPSERVER_HTTP_SERVER_USERNAME") != "" ||
 		os.Getenv("MONIC_HTTPSERVER_HTTP_SERVER_PASSWORD") != ""
-}
-
-// handleHTTPCheckFromEnv creates an HTTP check from environment variables if configured
-func handleHTTPCheckFromEnv(config *types.Config) *types.Config {
-	// Check if HTTP check environment variables are set
-	httpURL := os.Getenv("MONIC_CHECK_HTTP_URL")
-	if httpURL == "" {
-		return config
-	}
-
-	// Create a single HTTP check from environment variables
-	httpCheck := types.HTTPCheck{
-		Name:           "http-check",
-		URL:            httpURL,
-		Method:         os.Getenv("MONIC_CHECK_HTTP_METHOD"),
-		Timeout:        10, // default
-		ExpectedStatus: 200, // default
-		CheckInterval:  300, // default
-	}
-
-	// Parse timeout if provided
-	if timeoutStr := os.Getenv("MONIC_CHECK_HTTP_TIMEOUT"); timeoutStr != "" {
-		if timeout, err := strconv.Atoi(timeoutStr); err == nil {
-			httpCheck.Timeout = timeout
-		}
-	}
-
-	// Parse expected status if provided
-	if statusStr := os.Getenv("MONIC_CHECK_HTTP_EXPECTED_STATUS"); statusStr != "" {
-		if status, err := strconv.Atoi(statusStr); err == nil {
-			httpCheck.ExpectedStatus = status
-		}
-	}
-
-	// Parse interval if provided
-	if intervalStr := os.Getenv("MONIC_CHECK_HTTP_INTERVAL"); intervalStr != "" {
-		if interval, err := strconv.Atoi(intervalStr); err == nil {
-			httpCheck.CheckInterval = interval
-		}
-	}
-
-	// Set method default if not provided
-	if httpCheck.Method == "" {
-		httpCheck.Method = "GET"
-	}
-
-	// Replace or add the HTTP check
-	if len(config.HTTPChecks) == 0 {
-		config.HTTPChecks = []types.HTTPCheck{httpCheck}
-	} else {
-		// Replace the first HTTP check with the environment-based one
-		config.HTTPChecks[0] = httpCheck
-	}
-
-	return config
 }

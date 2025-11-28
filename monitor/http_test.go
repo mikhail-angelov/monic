@@ -31,7 +31,6 @@ func TestHTTPMonitor_ValidateHTTPCheck(t *testing.T) {
 
 	// Test valid HTTP check
 	validCheck := types.HTTPCheck{
-		Name:           "test",
 		URL:            "https://example.com",
 		Method:         "GET",
 		Timeout:        10,
@@ -51,43 +50,38 @@ func TestHTTPMonitor_ValidateHTTPCheck(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "empty name",
-			check:    types.HTTPCheck{Name: "", URL: "https://example.com", Method: "GET"},
-			expected: "HTTP check name cannot be empty",
-		},
-		{
 			name:     "empty URL",
-			check:    types.HTTPCheck{Name: "test", URL: "", Method: "GET"},
+			check:    types.HTTPCheck{URL: "", Method: "GET"},
 			expected: "URL cannot be empty",
 		},
 		{
 			name:     "invalid URL scheme",
-			check:    types.HTTPCheck{Name: "test", URL: "ftp://example.com", Method: "GET"},
+			check:    types.HTTPCheck{URL: "ftp://example.com", Method: "GET"},
 			expected: "URL must start with http:// or https://",
 		},
 		{
 			name:     "empty method",
-			check:    types.HTTPCheck{Name: "test", URL: "https://example.com", Method: ""},
+			check:    types.HTTPCheck{URL: "https://example.com", Method: ""},
 			expected: "HTTP method cannot be empty",
 		},
 		{
 			name:     "invalid method",
-			check:    types.HTTPCheck{Name: "test", URL: "https://example.com", Method: "INVALID"},
+			check:    types.HTTPCheck{URL: "https://example.com", Method: "INVALID"},
 			expected: "invalid HTTP method: INVALID",
 		},
 		{
 			name:     "zero timeout",
-			check:    types.HTTPCheck{Name: "test", URL: "https://example.com", Method: "GET", Timeout: 0},
+			check:    types.HTTPCheck{URL: "https://example.com", Method: "GET", Timeout: 0},
 			expected: "timeout must be positive",
 		},
 		{
 			name:     "invalid status code",
-			check:    types.HTTPCheck{Name: "test", URL: "https://example.com", Method: "GET", Timeout: 10, ExpectedStatus: 99, CheckInterval: 30},
+			check:    types.HTTPCheck{URL: "https://example.com", Method: "GET", Timeout: 10, ExpectedStatus: 99, CheckInterval: 30},
 			expected: "expected status code must be between 100 and 599",
 		},
 		{
 			name:     "zero check interval",
-			check:    types.HTTPCheck{Name: "test", URL: "https://example.com", Method: "GET", Timeout: 10, ExpectedStatus: 200, CheckInterval: 0},
+			check:    types.HTTPCheck{URL: "https://example.com", Method: "GET", Timeout: 10, ExpectedStatus: 200, CheckInterval: 0},
 			expected: "check interval must be positive",
 		},
 	}
@@ -115,7 +109,6 @@ func TestHTTPMonitor_CheckEndpoint_Success(t *testing.T) {
 	defer server.Close()
 
 	check := types.HTTPCheck{
-		Name:           "test",
 		URL:            server.URL,
 		Method:         "GET",
 		Timeout:        5,
@@ -131,9 +124,7 @@ func TestHTTPMonitor_CheckEndpoint_Success(t *testing.T) {
 	if result.StatusCode != 200 {
 		t.Errorf("Expected status code 200, got %d", result.StatusCode)
 	}
-	if result.Name != "test" {
-		t.Errorf("Expected name 'test', got '%s'", result.Name)
-	}
+	// Note: HTTPCheck doesn't have a Name field, so result.Name will be empty
 	if result.URL != server.URL {
 		t.Errorf("Expected URL '%s', got '%s'", server.URL, result.URL)
 	}
@@ -155,7 +146,6 @@ func TestHTTPMonitor_CheckEndpoint_WrongStatusCode(t *testing.T) {
 	defer server.Close()
 
 	check := types.HTTPCheck{
-		Name:           "test",
 		URL:            server.URL,
 		Method:         "GET",
 		Timeout:        5,
@@ -181,7 +171,6 @@ func TestHTTPMonitor_CheckEndpoint_ConnectionError(t *testing.T) {
 
 	// Use an invalid URL that will cause connection error
 	check := types.HTTPCheck{
-		Name:           "test",
 		URL:            "http://invalid-host-that-does-not-exist.local",
 		Method:         "GET",
 		Timeout:        1, // Short timeout for faster test
@@ -215,7 +204,6 @@ func TestHTTPMonitor_CheckEndpoints(t *testing.T) {
 
 	checks := []types.HTTPCheck{
 		{
-			Name:           "server1",
 			URL:            server1.URL,
 			Method:         "GET",
 			Timeout:        5,
@@ -223,7 +211,6 @@ func TestHTTPMonitor_CheckEndpoints(t *testing.T) {
 			CheckInterval:  30,
 		},
 		{
-			Name:           "server2",
 			URL:            server2.URL,
 			Method:         "GET",
 			Timeout:        5,
@@ -307,5 +294,43 @@ func TestHTTPMonitor_GetHTTPStats_Empty(t *testing.T) {
 
 	if len(stats) != 0 {
 		t.Errorf("Expected empty stats for empty results, got %v", stats)
+	}
+}
+
+func TestHTTPMonitor_CheckEndpointConcurrent(t *testing.T) {
+	monitor := NewHTTPMonitor()
+
+	// Create a test server that returns 200 OK
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	}))
+	defer server.Close()
+
+	check := types.HTTPCheck{
+		URL:            server.URL,
+		Method:         "GET",
+		Timeout:        5,
+		ExpectedStatus: 200,
+		CheckInterval:  30,
+	}
+
+	result := monitor.CheckEndpointConcurrent(check)
+
+	if !result.Success {
+		t.Errorf("Expected successful check, got error: %s", result.Error)
+	}
+	if result.StatusCode != 200 {
+		t.Errorf("Expected status code 200, got %d", result.StatusCode)
+	}
+	// Note: HTTPCheck doesn't have a Name field, so result.Name will be empty
+	if result.URL != server.URL {
+		t.Errorf("Expected URL '%s', got '%s'", server.URL, result.URL)
+	}
+	if result.ResponseTime <= 0 {
+		t.Error("Expected positive response time")
+	}
+	if result.Timestamp.IsZero() {
+		t.Error("Expected timestamp to be set")
 	}
 }

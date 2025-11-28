@@ -17,16 +17,13 @@ func TestNewMonitorService(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: []types.HTTPCheck{
-			{
-				Name:           "test",
+		HTTPChecks: types.HTTPCheck		{
 				URL:            "http://localhost:8080/health",
 				Method:         "GET",
 				Timeout:        10,
 				ExpectedStatus: 200,
 				CheckInterval:  30,
 			},
-		},
 	}
 
 	service := NewMonitorService(config)
@@ -73,7 +70,7 @@ func TestMonitorService_GetStatus(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: []types.HTTPCheck{},
+		HTTPChecks: types.HTTPCheck{},
 	}
 
 	service := NewMonitorService(config)
@@ -103,7 +100,7 @@ func TestMonitorService_GetDiskUsageSummary(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: []types.HTTPCheck{},
+		HTTPChecks: types.HTTPCheck{},
 	}
 
 	service := NewMonitorService(config)
@@ -145,7 +142,7 @@ func TestMonitorService_GetDiskUsageSummary_Empty(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: []types.HTTPCheck{},
+		HTTPChecks: types.HTTPCheck{},
 	}
 
 	service := NewMonitorService(config)
@@ -212,7 +209,7 @@ func TestMonitorService_ProcessAlerts(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: []types.HTTPCheck{},
+		HTTPChecks: types.HTTPCheck{},
 	}
 
 	service := NewMonitorService(config)

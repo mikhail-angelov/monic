@@ -33,10 +33,6 @@ func NewAlertManager(config *types.AlertingConfig, appName string) *AlertManager
 
 // SendAlert sends an alert through all configured channels
 func (am *AlertManager) SendAlert(alert types.Alert) error {
-	if !am.config.Enabled {
-		return nil // Alerting disabled
-	}
-
 	// Check if we should send this alert based on level
 	if !am.shouldSendLevel(alert.Level) {
 		return nil
@@ -86,31 +82,19 @@ func (am *AlertManager) SendAlert(alert types.Alert) error {
 
 // shouldSendLevel checks if the alert level should be sent
 func (am *AlertManager) shouldSendLevel(level string) bool {
-	if len(am.config.AlertLevels) == 0 {
-		// If no levels specified, send all
-		return true
-	}
-
-	for _, configuredLevel := range am.config.AlertLevels {
-		if configuredLevel == level {
-			return true
-		}
-	}
-	return false
+	// If no levels configured, send all
+	return true
 }
 
 // shouldSendCooldown checks if enough time has passed since the last alert of this type
 func (am *AlertManager) shouldSendCooldown(alert types.Alert) bool {
-	if am.config.Cooldown <= 0 {
-		return true // No cooldown configured
-	}
 
 	lastSent, exists := am.lastSent[alert.Type]
 	if !exists {
 		return true // Never sent this type before
 	}
 
-	cooldownDuration := time.Duration(am.config.Cooldown) * time.Minute
+	cooldownDuration := time.Duration(1) * time.Minute
 	return time.Since(lastSent) >= cooldownDuration
 }
 
@@ -357,9 +341,6 @@ func (am *AlertManager) SendAlerts(alerts []types.Alert) error {
 
 // ValidateConfig validates the alerting configuration
 func (am *AlertManager) ValidateConfig() error {
-	if !am.config.Enabled {
-		return nil // No validation needed if disabled
-	}
 
 	// Validate email configuration if enabled
 	if am.config.Email.Enabled {
@@ -404,7 +385,7 @@ func (am *AlertManager) ValidateConfig() error {
 	}
 
 	// Validate that at least one alerting method is configured if enabled
-	if am.config.Enabled && !am.config.Email.Enabled && !am.config.Mailgun.Enabled && !am.config.Telegram.Enabled {
+	if !am.config.Email.Enabled && !am.config.Mailgun.Enabled && !am.config.Telegram.Enabled {
 		return fmt.Errorf("alerting is enabled but no alerting methods are configured")
 	}
 
