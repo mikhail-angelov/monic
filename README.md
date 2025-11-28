@@ -9,7 +9,7 @@ Pure **vibe-coded** lightweight monitoring service written in Go that runs in Do
 - **System Resource Monitoring**
   - CPU usage monitoring with configurable thresholds
   - Memory (RAM) usage monitoring
-  - Disk space monitoring for multiple paths
+  - Disk space monitoring for root path ("/")
   - Configurable alert thresholds
   - Efficient collection with minimal resource usage
 
@@ -28,6 +28,7 @@ Pure **vibe-coded** lightweight monitoring service written in Go that runs in Do
 - **Advanced Alerting System**
   - Email alerts via SMTP
   - Mailgun API integration
+  - Telegram bot notifications
   - Configurable alert levels (warning, critical)
   - Alert cooldown and deduplication
   - 3 consecutive failures logic to prevent false alerts
@@ -38,6 +39,7 @@ Pure **vibe-coded** lightweight monitoring service written in Go that runs in Do
   - Basic authentication support
   - Real-time system statistics and health checks
   - Historical data and alert status
+  - Web interface with disk size information
 
 - **Container Ready**
   - Runs efficiently in Docker containers
@@ -73,7 +75,6 @@ docker build -t monic .
 docker run -d \
   --name monic \
   --privileged \
-  --network host \
   -v /:/host:ro \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   monic
@@ -96,100 +97,90 @@ make build
 
 ## Configuration
 
-The service uses a JSON configuration file (`config.json`). See `config-example.json` for a complete example.
+The service uses environment variables for configuration. See `.env.example` for a complete example.
 
-### Configuration Structure
+### Environment Variables
 
-```json
-{
-  "system_checks": {
-    "interval": 30,
-    "cpu_threshold": 80,
-    "memory_threshold": 85,
-    "disk_threshold": 90,
-    "disk_paths": ["/", "/var", "/home"]
-  },
-  "http_checks": [
-    {
-      "name": "local_service",
-      "url": "http://localhost:8080/health",
-      "method": "GET",
-      "timeout": 10,
-      "expected_status": 200,
-      "check_interval": 30
-    }
-  ],
-  "alerting": {
-    "enabled": false,
-    "alert_levels": ["warning", "critical"],
-    "cooldown": 30,
-    "email": {
-      "enabled": false,
-      "smtp_host": "smtp.gmail.com",
-      "smtp_port": 587,
-      "username": "your-email@gmail.com",
-      "password": "your-app-password",
-      "from": "monic@yourdomain.com",
-      "to": "admin@yourdomain.com",
-      "use_tls": true
-    },
-    "mailgun": {
-      "enabled": false,
-      "api_key": "your-mailgun-api-key",
-      "domain": "your-domain.com",
-      "from": "monic@yourdomain.com",
-      "to": "admin@yourdomain.com",
-      "base_url": "https://api.mailgun.net/v3"
-    }
-  },
-  "docker_checks": {
-    "enabled": true,
-    "check_interval": 60,
-    "containers": []
-  },
-  "http_server": {
-    "enabled": true,
-    "port": 8080,
-    "username": "admin",
-    "password": "monic123"
-  }
-}
+The application uses environment variables with the `MONIC_` prefix. Here are the main configuration options:
+
+```bash
+# Basic Configuration
+MONIC_APP_NAME="Monic Monitoring"
+
+# System Monitoring
+MONIC_CHECK_SYSTEM_INTERVAL=30
+MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
+MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
+MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
+
+# HTTP Server (Stats Endpoint)
+MONIC_HTTP_SERVER_PORT=8080
+MONIC_HTTP_SERVER_USERNAME="admin"
+MONIC_HTTP_SERVER_PASSWORD="monic123"
+
+# Email Alerting (SMTP)
+MONIC_ALERTING_EMAIL_SMTP_HOST="smtp.gmail.com"
+MONIC_ALERTING_EMAIL_SMTP_PORT=587
+MONIC_ALERTING_EMAIL_USERNAME="your-email@gmail.com"
+MONIC_ALERTING_EMAIL_PASSWORD="your-app-password"
+MONIC_ALERTING_EMAIL_FROM="monic@yourdomain.com"
+MONIC_ALERTING_EMAIL_TO="admin@yourdomain.com"
+MONIC_ALERTING_EMAIL_USE_TLS=true
+
+# Mailgun Alerting
+MONIC_MAILGUN_API_KEY="your-mailgun-api-key"
+MONIC_MAILGUN_DOMAIN="your-domain.com"
+MONIC_MAILGUN_FROM="monic@yourdomain.com"
+MONIC_MAILGUN_TO="admin@yourdomain.com"
+MONIC_MAILGUN_BASE_URL="https://api.mailgun.net/v3"
+
+# Telegram Alerting
+MONIC_TELEGRAM_BOT_TOKEN="your-bot-token"
+MONIC_TELEGRAM_CHAT_ID="your-chat-id"
+
+# Docker Monitoring
+MONIC_CHECK_DOCKER_INTERVAL=60
+MONIC_CHECK_DOCKER_CONTAINERS="container1,container2"
 ```
 
 ### Configuration Options
 
-- **system_checks**: System resource monitoring
-  - `interval`: System check interval in seconds
-  - `cpu_threshold`: CPU usage percentage threshold for alerts
-  - `memory_threshold`: Memory usage percentage threshold for alerts
-  - `disk_threshold`: Disk usage percentage threshold for alerts
-  - `disk_paths`: List of disk paths to monitor
+- **System Monitoring** (`MONIC_CHECK_SYSTEM_*`)
+  - `INTERVAL`: System check interval in seconds (default: 30)
+  - `CPU_THRESHOLD`: CPU usage percentage threshold for alerts (default: 80)
+  - `MEMORY_THRESHOLD`: Memory usage percentage threshold for alerts (default: 85)
+  - `DISK_THRESHOLD`: Disk usage percentage threshold for alerts (default: 90)
+  - **Note**: Disk monitoring now only checks the root path ("/") for simplicity
 
-- **http_checks**: HTTP endpoint monitoring
-  - `name`: Unique name for the check
-  - `url`: HTTP/HTTPS URL to monitor
-  - `method`: HTTP method (GET, POST, etc.)
-  - `timeout`: Request timeout in seconds
-  - `expected_status`: Expected HTTP status code
-  - `check_interval`: Check interval in seconds
+- **HTTP Server** (`MONIC_HTTP_SERVER_*`)
+  - `PORT`: HTTP server port for stats endpoint (default: 8080)
+  - `USERNAME`: Basic auth username (optional)
+  - `PASSWORD`: Basic auth password (optional)
+  - **Note**: Server is automatically enabled when port is configured
 
-- **alerting**: Alert configuration
-  - `enabled`: Enable/disable alerting
-  - `alert_levels`: Alert levels to send (warning, critical)
-  - `cooldown`: Minimum time between alerts for the same issue
-  - `email`: SMTP email configuration
-  - `mailgun`: Mailgun API configuration
+- **Email Alerting** (`MONIC_ALERTING_EMAIL_*`)
+  - `SMTP_HOST`: SMTP server hostname
+  - `SMTP_PORT`: SMTP server port
+  - `USERNAME`: SMTP username
+  - `PASSWORD`: SMTP password
+  - `FROM`: Sender email address
+  - `TO`: Recipient email address
+  - `USE_TLS`: Enable TLS (true/false)
 
-- **docker_checks**: Docker container monitoring
-  - `enabled`: Enable/disable Docker monitoring
-  - `check_interval`: Docker check interval in seconds
-  - `containers`: Specific containers to monitor (empty for all)
+- **Mailgun Alerting** (`MONIC_MAILGUN_*`)
+  - `API_KEY`: Mailgun API key
+  - `DOMAIN`: Mailgun domain
+  - `FROM`: Sender email address
+  - `TO`: Recipient email address
+  - `BASE_URL`: Mailgun API base URL
 
-- **http_server**: HTTP stats server
-  - `enabled`: Enable/disable HTTP server
-  - `port`: HTTP server port
-  - `username`: Basic auth username
-  - `password`: Basic auth password
+- **Telegram Alerting** (`MONIC_TELEGRAM_*`)
+  - `BOT_TOKEN`: Telegram bot token
+  - `CHAT_ID`: Telegram chat ID
+
+- **Docker Monitoring** (`MONIC_CHECK_DOCKER_*`)
+  - `INTERVAL`: Docker check interval in seconds (default: 60)
+  - `CONTAINERS`: Comma-separated list of specific containers to monitor (empty for all)
 
 ## Docker Configuration
 
@@ -198,84 +189,28 @@ The service uses a JSON configuration file (`config.json`). See `config-example.
 To monitor host system resources from within a Docker container:
 
 1. Run with `--privileged` flag
-2. Use `--network host` for network monitoring
-3. Mount host filesystem: `-v /:/host:ro`
-4. Mount Docker socket for container monitoring: `-v /var/run/docker.sock:/var/run/docker.sock:ro`
+2. Mount host filesystem: `-v /:/host:ro`
+3. Mount Docker socket for container monitoring: `-v /var/run/docker.sock:/var/run/docker.sock:ro`
 
 
+## Web Interface
 
-## HTTP Stats API
+The HTTP stats server provides a web interface at `/stats` that displays:
 
-When the HTTP server is enabled, you can access monitoring data via REST API:
+- **System Resources**: CPU, memory, and disk usage with progress bars
+- **Disk Information**: Total size, used space, free space in GB
+- **HTTP Checks**: Status of monitored endpoints
+- **Recent Alerts**: Active and recent alerts
+- **System Details**: Host information and runtime stats
 
-```bash
-# Get monitoring stats
-curl -u admin:monic123 http://localhost:8080/stats
-```
-
-### API Response Structure
-
-```json
-{
-  "service_status": {
-    "status": "running",
-    "started_at": "2025-11-16T20:48:59+03:00"
-  },
-  "system_info": {
-    "host": {
-      "num_cpus": 8,
-      "total_memory": 17179869184,
-      "available_memory": 8589934592
-    },
-    "runtime": {
-      "go_version": "go1.21.0",
-      "num_cpu": 8,
-      "goroutines": 15,
-      "go_max_procs": 8
-    }
-  },
-  "current_system_stats": {
-    "timestamp": "2025-11-16T20:48:59+03:00",
-    "cpu_usage": 15.23,
-    "memory_usage": {
-      "total": 17179869184,
-      "used": 8589934592,
-      "free": 8589934592,
-      "used_percent": 50.0
-    },
-    "disk_usage": {
-      "/": {
-        "path": "/",
-        "total": 107374182400,
-        "used": 26843545600,
-        "free": 80530636800,
-        "used_percent": 25.0
-      }
-    }
-  },
-  "http_checks": {
-    "total_checks": 2,
-    "successful_checks": 2,
-    "failed_checks": 0,
-    "success_rate": 100.0
-  },
-  "alerts": {
-    "active_alerts": 0
-  },
-  "thresholds": {
-    "cpu_threshold": 80,
-    "memory_threshold": 85,
-    "disk_threshold": 90
-  }
-}
-```
+The interface automatically refreshes every 30 seconds and shows disk size information with color-coded thresholds.
 
 ## Monitoring Output
 
 The service logs monitoring information in the following format:
 
 ```
-System Stats - CPU: 15.23%, Memory: 45.67%, Disk: [/:25.1%, /var:12.3%]
+System Stats - CPU: 15.23%, Memory: 45.67%, Disk: /:25.1%
 HTTP Stats - Total: 2, Success: 2, Failed: 0, Success Rate: 100.0%
 Docker Stats - Total: 5, Running: 4, Stopped: 1, Running: 80.0%
 ALERT [warning] cpu: CPU usage is 85.23% (threshold: 80%)
@@ -286,7 +221,7 @@ ALERT [critical] http_local_service: HTTP check failed for local_service: connec
 
 - **CPU**: CPU usage exceeds threshold
 - **Memory**: Memory usage exceeds threshold  
-- **Disk**: Disk usage exceeds threshold on any monitored path
+- **Disk**: Disk usage exceeds threshold on root path
 - **HTTP**: HTTP check fails (wrong status code or connection error)
 - **Docker**: Container status changes or resource issues
 
@@ -296,6 +231,7 @@ ALERT [critical] http_local_service: HTTP check failed for local_service: connec
 - **Recovery Alerts**: Notifications are sent when issues are resolved
 - **Alert Cooldown**: Prevents alert spam with configurable cooldown periods
 - **State Management**: Tracks alert states to avoid duplicate notifications
+- **Automatic Feature Detection**: Features are automatically enabled when their configuration is provided
 
 ## Performance Considerations
 
@@ -322,9 +258,14 @@ ALERT [critical] http_local_service: HTTP check failed for local_service: connec
 │   ├── alert.go            # Alert management and sending
 │   └── state_manager.go    # Alert state tracking
 ├── server/
-│   └── server.go           # HTTP stats server
-├── config.json             # Configuration file
-├── config-example.json     # Example configuration
+│   ├── server.go           # HTTP stats server
+│   ├── template.go         # HTML template rendering
+│   └── templates/
+│       └── stats.html      # Web interface template
+├── config/
+│   ├── config.go           # Configuration loading
+│   └── config_test.go      # Configuration tests
+├── .env.example            # Example environment variables
 ├── Dockerfile              # Container build configuration
 ├── docker-compose.yml      # Docker Compose configuration
 ├── Makefile                # Build and test commands
@@ -439,16 +380,15 @@ The version is set during build and is included in Docker images when built via 
 3. **High CPU usage**
    - Increase check intervals in configuration
    - Reduce number of HTTP checks
-   - Monitor fewer disk paths
 
 4. **Docker monitoring not working**
    - Ensure Docker socket is mounted correctly
    - Check container has access to Docker daemon
 
 5. **Alerts not sending**
-   - Verify alerting is enabled in configuration
-   - Check SMTP/Mailgun credentials
-   - Verify network connectivity for email sending
+   - Verify alerting environment variables are set correctly
+   - Check SMTP/Mailgun/Telegram credentials
+   - Verify network connectivity for alert sending
 
 6. **Docker monitoring permission denied**
    - Check Docker socket permissions on host
