@@ -7,28 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"bconf.com/monic/config"
 	"bconf.com/monic/server"
-	"bconf.com/monic/types"
-
-	"github.com/joho/godotenv"
-	"github.com/kelseyhightower/envconfig"
 )
-
-// loadConfig loads configuration from environment variables only
-func loadConfig() (*types.Config, error) {
-	config := &types.Config{}
-
-	// Load .env file (Optional)
-	// It's okay if .env doesn't exist
-	_ = godotenv.Load()
-
-	// Load from Environment Variables
-	if err := envconfig.Process("MONIC", config); err != nil {
-		return nil, fmt.Errorf("failed to process environment variables: %w", err)
-	}
-
-	return config, nil
-}
 
 // version will be set during build
 var version = "dev"
@@ -45,14 +26,14 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Load configuration from environment variables
-	config, err := loadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		slog.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
 
 	// Create and start monitoring service
-	service := server.NewMonitorService(config)
+	service := server.NewMonitorService(cfg)
 	if err := service.Start(); err != nil {
 		slog.Error("Failed to start monitoring service", "error", err)
 		os.Exit(1)

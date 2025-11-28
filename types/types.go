@@ -32,15 +32,10 @@ type HTTPCheck struct {
 	LastCheck      time.Time `json:"-"`
 }
 
-// LoggingConfig contains logging settings
-type LoggingConfig struct {
-	Level string `json:"level" envconfig:"LEVEL"`
-	File  string `json:"file" envconfig:"FILE"`
-}
 
 // AlertingConfig contains alert notification settings
 type AlertingConfig struct {
-	Enabled     bool           `json:"enabled" envconfig:"ALERTING_ENABLED"`
+	Enabled     bool           `json:"enabled"`
 	Email       EmailConfig    `json:"email"`
 	Mailgun     MailgunConfig  `json:"mailgun"`
 	Telegram    TelegramConfig `json:"telegram"`
@@ -50,7 +45,7 @@ type AlertingConfig struct {
 
 // EmailConfig contains SMTP email settings
 type EmailConfig struct {
-	Enabled  bool   `json:"enabled" envconfig:"ALERTING_EMAIL_ENABLED"`
+	Enabled  bool   `json:"enabled"`
 	SMTPHost string `json:"smtp_host" envconfig:"ALERTING_EMAIL_SMTP_HOST"`
 	SMTPPort int    `json:"smtp_port" envconfig:"ALERTING_EMAIL_SMTP_PORT"`
 	Username string `json:"username" envconfig:"ALERTING_EMAIL_USERNAME"`
@@ -62,7 +57,7 @@ type EmailConfig struct {
 
 // MailgunConfig contains Mailgun API settings
 type MailgunConfig struct {
-	Enabled bool   `json:"enabled" envconfig:"ENABLED"`
+	Enabled bool   `json:"enabled"`
 	APIKey  string `json:"api_key" envconfig:"API_KEY"`
 	Domain  string `json:"domain" envconfig:"DOMAIN"`
 	From    string `json:"from" envconfig:"FROM"`
@@ -72,7 +67,7 @@ type MailgunConfig struct {
 
 // TelegramConfig contains Telegram bot settings
 type TelegramConfig struct {
-	Enabled  bool   `json:"enabled" envconfig:"ENABLED"`
+	Enabled  bool   `json:"enabled"`
 	BotToken string `json:"bot_token" envconfig:"BOT_TOKEN"`
 	ChatID   string `json:"chat_id" envconfig:"CHAT_ID"`
 }
@@ -132,7 +127,7 @@ type AlertState struct {
 
 // DockerConfig contains Docker container monitoring settings
 type DockerConfig struct {
-	Enabled       bool     `json:"enabled" envconfig:"CHECK_DOCKER_ENABLED"`
+	Enabled       bool     `json:"enabled"`
 	CheckInterval int      `json:"check_interval" envconfig:"CHECK_DOCKER_INTERVAL"`
 	Containers    []string `json:"containers" envconfig:"CHECK_DOCKER_CONTAINERS"` // Specific containers to monitor, empty for all
 }
@@ -154,7 +149,7 @@ type DockerContainerStats struct {
 
 // HTTPServerConfig contains HTTP server settings for stats endpoint
 type HTTPServerConfig struct {
-	Enabled  bool   `json:"enabled" envconfig:"HTTP_SERVER_ENABLED"`
+	Enabled  bool   `json:"enabled"`
 	Port     int    `json:"port" envconfig:"HTTP_SERVER_PORT"`
 	Username string `json:"username" envconfig:"HTTP_SERVER_USERNAME"`
 	Password string `json:"password" envconfig:"HTTP_SERVER_PASSWORD"`

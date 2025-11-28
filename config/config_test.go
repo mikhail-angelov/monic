@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"os"
@@ -23,7 +23,7 @@ func TestLoadConfig_EnvOnly(t *testing.T) {
 	}()
 
 	// Test loading the config from environment variables
-	config, err := loadConfig()
+	config, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestLoadConfig_HTTPCheckFromEnv(t *testing.T) {
 	}()
 
 	// Test loading the config
-	config, err := loadConfig()
+	config, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	defer os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_INTERVAL")
 
 	// Load config
-	config, err := loadConfig()
+	config, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
