@@ -111,27 +111,11 @@ func TestLoadConfig_AlertingEmailSMTPHost(t *testing.T) {
 		os.Unsetenv("MONIC_ALERTING_EMAIL_FROM")
 		os.Unsetenv("MONIC_ALERTING_EMAIL_TO")
 	}()
-
-	// Debug: Check environment variables
-	t.Logf("Environment variables set:")
-	t.Logf("  MONIC_ALERTING_EMAIL_SMTP_HOST=%s", os.Getenv("MONIC_ALERTING_EMAIL_SMTP_HOST"))
-	t.Logf("  MONIC_ALERTING_EMAIL_SMTP_PORT=%s", os.Getenv("MONIC_ALERTING_EMAIL_SMTP_PORT"))
-	t.Logf("  MONIC_ALERTING_EMAIL_FROM=%s", os.Getenv("MONIC_ALERTING_EMAIL_FROM"))
-	t.Logf("  MONIC_ALERTING_EMAIL_TO=%s", os.Getenv("MONIC_ALERTING_EMAIL_TO"))
-
 	// Test loading the config
 	config, err := LoadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
-
-	// Debug: Check loaded config
-	t.Logf("Loaded config:")
-	t.Logf("  Email.Enabled: %v", config.Alerting.Email.Enabled)
-	t.Logf("  Email.SMTPHost: '%s'", config.Alerting.Email.SMTPHost)
-	t.Logf("  Email.SMTPPort: %d", config.Alerting.Email.SMTPPort)
-	t.Logf("  Email.From: '%s'", config.Alerting.Email.From)
-	t.Logf("  Email.To: '%s'", config.Alerting.Email.To)
 
 	// Verify email alerting configuration was loaded correctly
 	if !config.Alerting.Email.Enabled {
@@ -148,5 +132,75 @@ func TestLoadConfig_AlertingEmailSMTPHost(t *testing.T) {
 	}
 	if config.Alerting.Email.To != "admin@example.com" {
 		t.Errorf("Expected to email 'admin@example.com', got '%s'", config.Alerting.Email.To)
+	}
+}
+
+func TestLoadConfig_HTTPServerConfig(t *testing.T) {
+	// Set HTTP server environment variables
+	os.Setenv("MONIC_HTTP_SERVER_PORT", "8080")
+	os.Setenv("MONIC_HTTP_SERVER_USERNAME", "admin")
+	os.Setenv("MONIC_HTTP_SERVER_PASSWORD", "secret123")
+	defer func() {
+		os.Unsetenv("MONIC_HTTP_SERVER_PORT")
+		os.Unsetenv("MONIC_HTTP_SERVER_USERNAME")
+		os.Unsetenv("MONIC_HTTP_SERVER_PASSWORD")
+	}()
+
+	// Test loading the config
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify HTTP server configuration was loaded correctly
+	if !config.HTTPServer.Enabled {
+		t.Error("Expected HTTP server to be enabled when port is configured")
+	}
+	if config.HTTPServer.Port != 8080 {
+		t.Errorf("Expected HTTP server port 8080, got %d", config.HTTPServer.Port)
+	}
+	if config.HTTPServer.Username != "admin" {
+		t.Errorf("Expected HTTP server username 'admin', got '%s'", config.HTTPServer.Username)
+	}
+	if config.HTTPServer.Password != "secret123" {
+		t.Errorf("Expected HTTP server password 'secret123', got '%s'", config.HTTPServer.Password)
+	}
+}
+
+func TestLoadConfig_HTTPServerEnabledByPort(t *testing.T) {
+	// Set only the port environment variable
+	os.Setenv("MONIC_HTTP_SERVER_PORT", "9090")
+	defer os.Unsetenv("MONIC_HTTP_SERVER_PORT")
+
+	// Test loading the config
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify HTTP server is enabled when port is set
+	if !config.HTTPServer.Enabled {
+		t.Error("Expected HTTP server to be enabled when port is configured")
+	}
+	if config.HTTPServer.Port != 9090 {
+		t.Errorf("Expected HTTP server port 9090, got %d", config.HTTPServer.Port)
+	}
+}
+
+func TestLoadConfig_HTTPServerDisabledByDefault(t *testing.T) {
+	// Ensure no HTTP server environment variables are set
+	os.Unsetenv("MONIC_HTTP_SERVER_PORT")
+	os.Unsetenv("MONIC_HTTP_SERVER_USERNAME")
+	os.Unsetenv("MONIC_HTTP_SERVER_PASSWORD")
+
+	// Test loading the config
+	config, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify HTTP server is disabled by default
+	if config.HTTPServer.Enabled {
+		t.Error("Expected HTTP server to be disabled by default when no environment variables are set")
 	}
 }

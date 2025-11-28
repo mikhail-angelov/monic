@@ -90,13 +90,13 @@ func isTelegramAlertingEnabled() bool {
 
 // isDockerChecksEnabled checks if docker checks environment variables are set
 func isDockerChecksEnabled() bool {
-	return os.Getenv("MONIC_DOCKERCHECKS_CHECK_DOCKER_INTERVAL") != "" ||
-		os.Getenv("MONIC_DOCKERCHECKS_CHECK_DOCKER_CONTAINERS") != ""
+	return os.Getenv("MONIC_CHECK_DOCKER_INTERVAL") != "" ||
+		os.Getenv("MONIC_CHECK_DOCKER_CONTAINERS") != ""
 }
 
 // isHTTPServerEnabled checks if HTTP server environment variables are set
 func isHTTPServerEnabled() bool {
-	return os.Getenv("MONIC_HTTPSERVER_HTTP_SERVER_PORT") != "" ||
-		os.Getenv("MONIC_HTTPSERVER_HTTP_SERVER_USERNAME") != "" ||
-		os.Getenv("MONIC_HTTPSERVER_HTTP_SERVER_PASSWORD") != ""
+	return os.Getenv("MONIC_HTTP_SERVER_PORT") != "" ||
+		os.Getenv("MONIC_HTTP_SERVER_USERNAME") != "" ||
+		os.Getenv("MONIC_HTTP_SERVER_PASSWORD") != ""
 }

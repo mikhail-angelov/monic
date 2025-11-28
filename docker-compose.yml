@@ -12,14 +12,8 @@ services:
       - ./.env
     environment:
       - MONIC_APP_NAME=AppUnderMonitor
-      - MONIC_ALERTING_EMAIL_SMTP_HOST=smtp.example.com
-      - MONIC_ALERTING_EMAIL_SMTP_PORT=587
-      - MONIC_ALERTING_EMAIL_USERNAME=user@example.com
-      - MONIC_ALERTING_EMAIL_FROM=monic@example.com
-      - MONIC_ALERTING_EMAIL_TO=admin@example.com
-      - MONIC_ALERTING_EMAIL_USE_TLS=true
       
-      - MONIC_CHECK_SYSTEM_INTERVAL=60
+      - MONIC_CHECK_SYSTEM_INTERVAL=6
       - MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
       - MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
       - MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
@@ -28,7 +22,7 @@ services:
       - MONIC_CHECK_DOCKER_CONTAINERS="nginx,db"
       
       - MONIC_CHECK_HTTP_INTERVAL=300
-      - MONIC_CHECK_HTTP_URL=http://localhost:8088
+      - MONIC_CHECK_HTTP_URL=http://nginx:80
       - MONIC_CHECK_HTTP_METHOD=GET
       - MONIC_CHECK_HTTP_TIMEOUT=10
       - MONIC_CHECK_HTTP_EXPECTED_STATUS=200

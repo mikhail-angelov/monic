@@ -134,6 +134,32 @@
                         <div class="progress-fill" style="width: {{.current_system_stats.memory_usage.used_percent}}%; background-color: {{if ge .current_system_stats.memory_usage.used_percent 85.0}}var(--danger){{else}}var(--accent){{end}}"></div>
                     </div>
                 </div>
+                <br>
+                {{if .current_system_stats.disk_usage}}
+                {{range $path, $disk := .current_system_stats.disk_usage}}
+                <div class="stat-group">
+                    <div class="stat-row">
+                        <span class="stat-label">Disk Usage ({{$path}})</span>
+                        <span class="stat-value">{{printf "%.1f" $disk.UsedPercent}}%</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {{$disk.UsedPercent}}%; background-color: {{if ge $disk.UsedPercent 90.0}}var(--danger){{else}}var(--accent){{end}}"></div>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Disk Size</span>
+                        <span class="stat-value">{{printf "%.1f" (div (float64 $disk.Total) 1073741824.0)}} GB</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Used</span>
+                        <span class="stat-value">{{printf "%.1f" (div (float64 $disk.Used) 1073741824.0)}} GB</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Free</span>
+                        <span class="stat-value">{{printf "%.1f" (div (float64 $disk.Free) 1073741824.0)}} GB</span>
+                    </div>
+                </div>
+                {{end}}
+                {{end}}
                 {{else}}
                 <p>No system stats available</p>
                 {{end}}

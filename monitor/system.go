@@ -45,15 +45,13 @@ func (sm *SystemMonitor) CollectStats() (*types.SystemStats, error) {
 	}
 	stats.MemoryUsage = memStats
 
-	// Collect disk usage for configured paths
-	for _, path := range sm.config.DiskPaths {
-		diskStats, err := sm.getDiskUsage(path)
-		if err != nil {
-			// Log error but continue with other paths
-			fmt.Printf("Warning: failed to get disk usage for %s: %v\n", path, err)
-			continue
-		}
-		stats.DiskUsage[path] = diskStats
+	// Collect disk usage only for root path "/"
+	diskStats, err := sm.getDiskUsage("/")
+	if err != nil {
+		// Log error but continue with other stats
+		fmt.Printf("Warning: failed to get disk usage for /: %v\n", err)
+	} else {
+		stats.DiskUsage["/"] = diskStats
 	}
 
 	return stats, nil

@@ -15,6 +15,12 @@ var funcMap = template.FuncMap{
 	"ge": func(a, b float64) bool {
 		return a >= b
 	},
+	"div": func(a, b float64) float64 {
+		return a / b
+	},
+	"float64": func(n uint64) float64 {
+		return float64(n)
+	},
 }
 
 // renderStatsHTML renders the stats page using the HTML template
@@ -41,4 +47,3 @@ func renderStatsHTML(w http.ResponseWriter, stats map[string]interface{}) {
 		return
 	}
 }
-
