@@ -2,6 +2,8 @@
 
 Pure **vibe-coded** lightweight monitoring service written in Go that runs in Docker containers and monitors host system resources, HTTP endpoints, and Docker containers.
 
+<img width="480" alt="image" src="https://github.com/user-attachments/assets/cfa23855-76db-4425-9d49-95689ea5b86a" />
+
 ## Features
 
 - **System Resource Monitoring**
