@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,28 +14,15 @@ import (
 	"github.com/kelseyhightower/envconfig"
 )
 
-// loadConfig loads configuration from JSON file and environment variables
-func loadConfig(configPath string) (*types.Config, error) {
+// loadConfig loads configuration from environment variables only
+func loadConfig() (*types.Config, error) {
 	config := &types.Config{}
 
-	// 1. Load from JSON file (Optional/Fallback)
-	file, err := os.Open(configPath)
-	if err == nil {
-		defer file.Close()
-		decoder := json.NewDecoder(file)
-		if err := decoder.Decode(config); err != nil {
-			return nil, fmt.Errorf("failed to decode config file: %w", err)
-		}
-	} else if !os.IsNotExist(err) {
-		// Return error if file exists but cannot be opened
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-
-	// 2. Load .env file (Optional)
+	// Load .env file (Optional)
 	// It's okay if .env doesn't exist
 	_ = godotenv.Load()
 
-	// 3. Override with Environment Variables
+	// Load from Environment Variables
 	if err := envconfig.Process("MONIC", config); err != nil {
 		return nil, fmt.Errorf("failed to process environment variables: %w", err)
 	}
@@ -54,17 +40,12 @@ func main() {
 		return
 	}
 
-	// Load configuration
-	configPath := "config.json"
-	if len(os.Args) > 1 {
-		configPath = os.Args[1]
-	}
-
 	// Configure structured logging
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	config, err := loadConfig(configPath)
+	// Load configuration from environment variables
+	config, err := loadConfig()
 	if err != nil {
 		slog.Error("Failed to load configuration", "error", err)
 		os.Exit(1)

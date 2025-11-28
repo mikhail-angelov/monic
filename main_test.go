@@ -1,90 +1,107 @@
 package main
 
 import (
-	"encoding/json"
 	"os"
 	"testing"
-
-	"bconf.com/monic/types"
 )
 
-func TestLoadConfig(t *testing.T) {
-	// Create a temporary config file for testing
-	configData := types.Config{
-		SystemChecks: types.SystemChecksConfig{
-			Interval:        30,
-			CPUThreshold:    80,
-			MemoryThreshold: 85,
-			DiskThreshold:   90,
-			DiskPaths:       []string{"/", "/tmp"},
-		},
-		HTTPChecks: []types.HTTPCheck{
-			{
-				Name:           "test",
-				URL:            "http://localhost:8080/health",
-				Method:         "GET",
-				Timeout:        10,
-				ExpectedStatus: 200,
-				CheckInterval:  30,
-			},
-		},
-	}
+func TestLoadConfig_EnvOnly(t *testing.T) {
+	// Set environment variables
+	os.Setenv("MONIC_APP_NAME", "TestApp")
+	os.Setenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_INTERVAL", "30")
+	os.Setenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_CPU_THRESHOLD", "80")
+	os.Setenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_MEMORY_THRESHOLD", "85")
+	os.Setenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_DISK_THRESHOLD", "90")
+	os.Setenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_DISK_PATHS", "/,/tmp")
+	defer func() {
+		os.Unsetenv("MONIC_APP_NAME")
+		os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_INTERVAL")
+		os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_CPU_THRESHOLD")
+		os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_MEMORY_THRESHOLD")
+		os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_DISK_THRESHOLD")
+		os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_DISK_PATHS")
+	}()
 
-	// Write config to temporary file
-	configFile, err := os.CreateTemp("", "test-config-*.json")
-	if err != nil {
-		t.Fatalf("Failed to create temp config file: %v", err)
-	}
-	defer os.Remove(configFile.Name())
-
-	encoder := json.NewEncoder(configFile)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(configData); err != nil {
-		t.Fatalf("Failed to write config to file: %v", err)
-	}
-	configFile.Close()
-
-	// Test loading the config
-	loadedConfig, err := loadConfig(configFile.Name())
+	// Test loading the config from environment variables
+	config, err := loadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
 	// Verify loaded config matches expected values
-	if loadedConfig.SystemChecks.Interval != 30 {
-		t.Errorf("Expected monitoring interval 30, got %d", loadedConfig.SystemChecks.Interval)
+	if config.AppName != "TestApp" {
+		t.Errorf("Expected AppName 'TestApp', got '%s'", config.AppName)
 	}
-	if loadedConfig.SystemChecks.CPUThreshold != 80 {
-		t.Errorf("Expected CPU threshold 80, got %d", loadedConfig.SystemChecks.CPUThreshold)
+	if config.SystemChecks.Interval != 30 {
+		t.Errorf("Expected monitoring interval 30, got %d", config.SystemChecks.Interval)
 	}
-	if len(loadedConfig.SystemChecks.DiskPaths) != 2 {
-		t.Errorf("Expected 2 disk paths, got %d", len(loadedConfig.SystemChecks.DiskPaths))
+	if config.SystemChecks.CPUThreshold != 80 {
+		t.Errorf("Expected CPU threshold 80, got %d", config.SystemChecks.CPUThreshold)
 	}
-	if len(loadedConfig.HTTPChecks) != 1 {
-		t.Errorf("Expected 1 HTTP check, got %d", len(loadedConfig.HTTPChecks))
+	if config.SystemChecks.MemoryThreshold != 85 {
+		t.Errorf("Expected memory threshold 85, got %d", config.SystemChecks.MemoryThreshold)
 	}
-	if loadedConfig.HTTPChecks[0].Name != "test" {
-		t.Errorf("Expected HTTP check name 'test', got '%s'", loadedConfig.HTTPChecks[0].Name)
+	if config.SystemChecks.DiskThreshold != 90 {
+		t.Errorf("Expected disk threshold 90, got %d", config.SystemChecks.DiskThreshold)
+	}
+	if len(config.SystemChecks.DiskPaths) != 2 || config.SystemChecks.DiskPaths[0] != "/" || config.SystemChecks.DiskPaths[1] != "/tmp" {
+		t.Errorf("Expected disk paths ['/', '/tmp'], got %v", config.SystemChecks.DiskPaths)
 	}
 }
 
-func TestLoadConfig_FileNotFound(t *testing.T) {
-	// Should not return error if config file is missing (env vars might be used)
-	_, err := loadConfig("/non/existent/path/config.json")
+func TestLoadConfig_HTTPCheckFromEnv(t *testing.T) {
+	// Set HTTP check environment variables
+	os.Setenv("MONIC_CHECK_HTTP_URL", "http://localhost:8080/health")
+	os.Setenv("MONIC_CHECK_HTTP_METHOD", "GET")
+	os.Setenv("MONIC_CHECK_HTTP_TIMEOUT", "10")
+	os.Setenv("MONIC_CHECK_HTTP_EXPECTED_STATUS", "200")
+	os.Setenv("MONIC_CHECK_HTTP_INTERVAL", "30")
+	defer func() {
+		os.Unsetenv("MONIC_CHECK_HTTP_URL")
+		os.Unsetenv("MONIC_CHECK_HTTP_METHOD")
+		os.Unsetenv("MONIC_CHECK_HTTP_TIMEOUT")
+		os.Unsetenv("MONIC_CHECK_HTTP_EXPECTED_STATUS")
+		os.Unsetenv("MONIC_CHECK_HTTP_INTERVAL")
+	}()
+
+	// Test loading the config
+	config, err := loadConfig()
 	if err != nil {
-		t.Errorf("Expected no error for non-existent config file, got: %v", err)
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify HTTP check was created from environment variables
+	if len(config.HTTPChecks) != 1 {
+		t.Errorf("Expected 1 HTTP check, got %d", len(config.HTTPChecks))
+	} else {
+		httpCheck := config.HTTPChecks[0]
+		if httpCheck.URL != "http://localhost:8080/health" {
+			t.Errorf("Expected HTTP check URL 'http://localhost:8080/health', got '%s'", httpCheck.URL)
+		}
+		if httpCheck.Method != "GET" {
+			t.Errorf("Expected HTTP check method 'GET', got '%s'", httpCheck.Method)
+		}
+		if httpCheck.Timeout != 10 {
+			t.Errorf("Expected HTTP check timeout 10, got %d", httpCheck.Timeout)
+		}
+		if httpCheck.ExpectedStatus != 200 {
+			t.Errorf("Expected HTTP check expected status 200, got %d", httpCheck.ExpectedStatus)
+		}
+		if httpCheck.CheckInterval != 30 {
+			t.Errorf("Expected HTTP check interval 30, got %d", httpCheck.CheckInterval)
+		}
 	}
 }
 
 func TestLoadConfig_EnvOverride(t *testing.T) {
 	// Set environment variables
 	os.Setenv("MONIC_APP_NAME", "EnvApp")
-	os.Setenv("MONIC_SYSTEM_CHECKS_INTERVAL", "60")
+	os.Setenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_INTERVAL", "60")
 	defer os.Unsetenv("MONIC_APP_NAME")
-	defer os.Unsetenv("MONIC_SYSTEM_CHECKS_INTERVAL")
+	defer os.Unsetenv("MONIC_SYSTEMCHECKS_CHECK_SYSTEM_INTERVAL")
 
-	// Load config (no file)
-	config, err := loadConfig("")
+	// Load config
+	config, err := loadConfig()
 	if err != nil {
 		t.Fatalf("Failed to load config: %v", err)
 	}
@@ -94,23 +111,5 @@ func TestLoadConfig_EnvOverride(t *testing.T) {
 	}
 	if config.SystemChecks.Interval != 60 {
 		t.Errorf("Expected Interval 60, got %d", config.SystemChecks.Interval)
-	}
-}
-
-func TestLoadConfig_InvalidJSON(t *testing.T) {
-	// Create a temporary file with invalid JSON
-	configFile, err := os.CreateTemp("", "test-invalid-config-*.json")
-	if err != nil {
-		t.Fatalf("Failed to create temp config file: %v", err)
-	}
-	defer os.Remove(configFile.Name())
-
-	// Write invalid JSON
-	configFile.WriteString("{ invalid json }")
-	configFile.Close()
-
-	_, err = loadConfig(configFile.Name())
-	if err == nil {
-		t.Error("Expected error for invalid JSON config")
 	}
 }
