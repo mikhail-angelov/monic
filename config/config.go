@@ -75,17 +75,17 @@ func isEmailAlertingEnabled() bool {
 
 // isMailgunAlertingEnabled checks if mailgun alerting environment variables are set
 func isMailgunAlertingEnabled() bool {
-	return os.Getenv("MONIC_MAILGUN_API_KEY") != "" ||
-		os.Getenv("MONIC_MAILGUN_DOMAIN") != "" ||
-		os.Getenv("MONIC_MAILGUN_FROM") != "" ||
-		os.Getenv("MONIC_MAILGUN_TO") != "" ||
-		os.Getenv("MONIC_MAILGUN_BASE_URL") != ""
+	return os.Getenv("MONIC_ALERTING_MAILGUN_API_KEY") != "" ||
+		os.Getenv("MONIC_ALERTING_MAILGUN_DOMAIN") != "" ||
+		os.Getenv("MONIC_ALERTING_MAILGUN_FROM") != "" ||
+		os.Getenv("MONIC_ALERTING_MAILGUN_TO") != "" ||
+		os.Getenv("MONIC_ALERTING_MAILGUN_BASE_URL") != ""
 }
 
 // isTelegramAlertingEnabled checks if telegram alerting environment variables are set
 func isTelegramAlertingEnabled() bool {
-	return os.Getenv("MONIC_TELEGRAM_BOT_TOKEN") != "" ||
-		os.Getenv("MONIC_TELEGRAM_CHAT_ID") != ""
+	return os.Getenv("MONIC_ALERTING_TELEGRAM_BOT_TOKEN") != "" ||
+		os.Getenv("MONIC_ALERTING_TELEGRAM_CHAT_ID") != ""
 }
 
 // isDockerChecksEnabled checks if docker checks environment variables are set

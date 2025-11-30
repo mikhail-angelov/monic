@@ -34,7 +34,7 @@ type HTTPCheck struct {
 // AlertingConfig contains alert notification settings
 type AlertingConfig struct {
 	Email    EmailConfig    `envconfig:"EMAIL"`
-	Mailgun  MailgunConfig  `envconfig:"EMAILGUN"`
+	Mailgun  MailgunConfig  `envconfig:"MAILGUN"`
 	Telegram TelegramConfig `envconfig:"TELEGRAM"`
 }
 
@@ -124,7 +124,7 @@ type AlertState struct {
 type DockerConfig struct {
 	Enabled       bool
 	CheckInterval int      `envconfig:"INTERVAL"`
-	Containers    []string `envconfig:"CONTAINERS"` // Specific containers to monitor, empty for all
+	Containers    []string `envconfig:"CONTAINERS"`
 }
 
 // DockerContainerStats contains Docker container status information

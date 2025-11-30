@@ -14,10 +14,10 @@ Pure **vibe-coded** lightweight monitoring service written in Go that runs in Do
   - Efficient collection with minimal resource usage
 
 - **HTTP/HTTPS Monitoring**
-  - Monitor multiple HTTP/HTTPS endpoints concurrently
+  - Monitor HTTP/HTTPS endpoint
   - Configurable timeouts and expected status codes
-  - Response time tracking and success rate calculation
-  - Concurrent checking for better performance
+  - Response time tracking
+  - Concurrent checking (internal support)
 
 - **Docker Container Monitoring**
   - Monitor Docker container status and resource usage
@@ -113,6 +113,13 @@ MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
 MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
 MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
 
+# HTTP Monitoring
+MONIC_CHECK_HTTP_URL="https://google.com"
+MONIC_CHECK_HTTP_METHOD="GET"
+MONIC_CHECK_HTTP_TIMEOUT=5
+MONIC_CHECK_HTTP_EXPECTED_STATUS=200
+MONIC_CHECK_HTTP_INTERVAL=30
+
 # HTTP Server (Stats Endpoint)
 MONIC_HTTP_SERVER_PORT=8080
 MONIC_HTTP_SERVER_USERNAME="admin"
@@ -128,15 +135,15 @@ MONIC_ALERTING_EMAIL_TO="admin@yourdomain.com"
 MONIC_ALERTING_EMAIL_USE_TLS=true
 
 # Mailgun Alerting
-MONIC_MAILGUN_API_KEY="your-mailgun-api-key"
-MONIC_MAILGUN_DOMAIN="your-domain.com"
-MONIC_MAILGUN_FROM="monic@yourdomain.com"
-MONIC_MAILGUN_TO="admin@yourdomain.com"
-MONIC_MAILGUN_BASE_URL="https://api.mailgun.net/v3"
+MONIC_ALERTING_MAILGUN_API_KEY="your-mailgun-api-key"
+MONIC_ALERTING_MAILGUN_DOMAIN="your-domain.com"
+MONIC_ALERTING_MAILGUN_FROM="monic@yourdomain.com"
+MONIC_ALERTING_MAILGUN_TO="admin@yourdomain.com"
+MONIC_ALERTING_MAILGUN_BASE_URL="https://api.mailgun.net/v3"
 
 # Telegram Alerting
-MONIC_TELEGRAM_BOT_TOKEN="your-bot-token"
-MONIC_TELEGRAM_CHAT_ID="your-chat-id"
+MONIC_ALERTING_TELEGRAM_BOT_TOKEN="your-bot-token"
+MONIC_ALERTING_TELEGRAM_CHAT_ID="your-chat-id"
 
 # Docker Monitoring
 MONIC_CHECK_DOCKER_INTERVAL=60
@@ -151,6 +158,13 @@ MONIC_CHECK_DOCKER_CONTAINERS="container1,container2"
   - `MEMORY_THRESHOLD`: Memory usage percentage threshold for alerts (default: 85)
   - `DISK_THRESHOLD`: Disk usage percentage threshold for alerts (default: 90)
   - **Note**: Disk monitoring now only checks the root path ("/") for simplicity
+
+- **HTTP Monitoring** (`MONIC_CHECK_HTTP_*`)
+  - `URL`: Target URL to monitor
+  - `METHOD`: HTTP method (GET, POST, etc.)
+  - `TIMEOUT`: Request timeout in seconds
+  - `EXPECTED_STATUS`: Expected HTTP status code (e.g., 200)
+  - `INTERVAL`: Check interval in seconds
 
 - **HTTP Server** (`MONIC_HTTP_SERVER_*`)
   - `PORT`: HTTP server port for stats endpoint (default: 8080)
@@ -167,14 +181,14 @@ MONIC_CHECK_DOCKER_CONTAINERS="container1,container2"
   - `TO`: Recipient email address
   - `USE_TLS`: Enable TLS (true/false)
 
-- **Mailgun Alerting** (`MONIC_MAILGUN_*`)
+- **Mailgun Alerting** (`MONIC_ALERTING_MAILGUN_*`)
   - `API_KEY`: Mailgun API key
   - `DOMAIN`: Mailgun domain
   - `FROM`: Sender email address
   - `TO`: Recipient email address
   - `BASE_URL`: Mailgun API base URL
 
-- **Telegram Alerting** (`MONIC_TELEGRAM_*`)
+- **Telegram Alerting** (`MONIC_ALERTING_TELEGRAM_*`)
   - `BOT_TOKEN`: Telegram bot token
   - `CHAT_ID`: Telegram chat ID
 

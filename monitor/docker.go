@@ -28,6 +28,7 @@ func NewDockerMonitor(config *types.DockerConfig) *DockerMonitor {
 // Initialize initializes the Docker client
 func (dm *DockerMonitor) Initialize() error {
 	if !dm.config.Enabled {
+		slog.Error("Docker monitor is disabled")
 		return nil
 	}
 
