@@ -21,15 +21,15 @@ help: ## Display this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
-build: ## Build the application
-	@echo "Building $(APP_NAME)..."
-	@go build -ldflags="$(LDFLAGS)" -o $(APP_NAME) main.go
+build: ## Build the application using vendored dependencies
+	@echo "Building $(APP_NAME) using vendored dependencies..."
+	@go build -mod=vendor -ldflags="$(LDFLAGS)" -o $(APP_NAME) main.go
 	@echo "Build complete: ./$(APP_NAME)"
 
 .PHONY: build-linux
-build-linux: ## Build for Linux
-	@echo "Building $(APP_NAME) for Linux..."
-	@GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(APP_NAME)-linux main.go
+build-linux: ## Build for Linux using vendored dependencies
+	@echo "Building $(APP_NAME) for Linux using vendored dependencies..."
+	@GOOS=linux GOARCH=amd64 go build -mod=vendor -ldflags="$(LDFLAGS)" -o $(APP_NAME)-linux main.go
 	@echo "Build complete: ./$(APP_NAME)-linux"
 
 .PHONY: test
@@ -186,10 +186,17 @@ version: ## Show current version information
 	@echo "Git Branch: $(GIT_BRANCH)"
 
 .PHONY: deps
-deps: ## Download dependencies
+deps: ## Download and vendor dependencies
 	@echo "Downloading dependencies..."
 	@go mod download
 	@go mod verify
+	@echo "Vendoring dependencies..."
+	@go mod vendor
+
+.PHONY: vendor
+vendor: ## Vendor dependencies
+	@echo "Vendoring dependencies..."
+	@go mod vendor
 
 .PHONY: fmt
 fmt: ## Format Go code

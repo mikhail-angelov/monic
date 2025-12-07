@@ -10,7 +10,7 @@
 *.out
 
 # Dependency directories (remove the comment below if you use Go modules)
-/vendor/
+# /vendor/ - Commented out because we're vendoring dependencies
 
 # IDE/editor files
 .vscode/

@@ -6,18 +6,16 @@ RUN apk add --no-cache gcc musl-dev
 
 WORKDIR /app
 
-# Copy go mod files
+# Copy go mod files and vendor directory
 COPY go.mod go.sum ./
-
-# Download dependencies
-RUN go mod download
+COPY vendor ./vendor/
 
 # Copy source code
 COPY . .
 
-# Build the application
+# Build the application using vendored dependencies
 ARG VERSION=dev
-RUN CGO_ENABLED=1 GOOS=linux go build -a -installsuffix cgo -ldflags="-X main.version=${VERSION}" -o monic main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -mod=vendor -a -installsuffix cgo -ldflags="-X main.version=${VERSION}" -o monic main.go
 
 # Runtime stage
 FROM alpine:latest
