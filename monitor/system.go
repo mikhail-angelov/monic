@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"fmt"
+	"log/slog"
 	"runtime"
 	"time"
 
@@ -49,7 +50,7 @@ func (sm *SystemMonitor) CollectStats() (*types.SystemStats, error) {
 	diskStats, err := sm.getDiskUsage("/")
 	if err != nil {
 		// Log error but continue with other stats
-		fmt.Printf("Warning: failed to get disk usage for /: %v\n", err)
+		slog.Warn("Failed to get disk usage", "path", "/", "error", err)
 	} else {
 		stats.DiskUsage["/"] = diskStats
 	}
