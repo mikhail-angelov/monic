@@ -5,8 +5,40 @@ import (
 	"testing"
 	"time"
 
+	"bconf.com/monic/alert"
+	"bconf.com/monic/monitor"
 	"bconf.com/monic/types"
 )
+
+// createTestMonitorService creates a MonitorService with all required dependencies for testing
+func createTestMonitorService(t *testing.T, config *types.Config) *MonitorService {
+	t.Helper()
+	
+	systemMonitor := monitor.NewSystemMonitor(&config.SystemChecks)
+	httpMonitor := monitor.NewHTTPMonitor()
+	dockerMonitor := monitor.NewDockerMonitor(&config.DockerChecks)
+	alertManager := alert.NewAlertManager(&config.Alerting, config.AppName)
+	stateManager := alert.NewStateManager()
+	storage := NewStorageManager(100)
+	
+	statsServer := NewStatsServer(
+		&config.HTTPServer,
+		systemMonitor,
+		storage,
+		stateManager,
+	)
+	
+	return NewMonitorService(
+		config,
+		systemMonitor,
+		httpMonitor,
+		dockerMonitor,
+		alertManager,
+		stateManager,
+		storage,
+		statsServer,
+	)
+}
 
 func TestNewMonitorService(t *testing.T) {
 	config := &types.Config{
@@ -26,7 +58,7 @@ func TestNewMonitorService(t *testing.T) {
 			},
 	}
 
-	service := NewMonitorService(config)
+	service := createTestMonitorService(t, config)
 
 	if service == nil {
 		t.Fatal("Expected MonitorService instance, got nil")
@@ -79,7 +111,7 @@ func TestMonitorService_GetDiskUsageSummary(t *testing.T) {
 		HTTPChecks: types.HTTPCheck{},
 	}
 
-	service := NewMonitorService(config)
+	service := createTestMonitorService(t, config)
 
 	diskUsage := map[string]types.DiskStats{
 		"/": {
@@ -121,7 +153,7 @@ func TestMonitorService_GetDiskUsageSummary_Empty(t *testing.T) {
 		HTTPChecks: types.HTTPCheck{},
 	}
 
-	service := NewMonitorService(config)
+	service := createTestMonitorService(t, config)
 
 	diskUsage := map[string]types.DiskStats{}
 
@@ -188,7 +220,7 @@ func TestMonitorService_ProcessAlerts(t *testing.T) {
 		HTTPChecks: types.HTTPCheck{},
 	}
 
-	service := NewMonitorService(config)
+	service := createTestMonitorService(t, config)
 
 	// Add some test alerts using storage manager
 	alerts := []types.Alert{

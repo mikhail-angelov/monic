@@ -7,7 +7,9 @@ import (
 	"os/signal"
 	"syscall"
 
+	"bconf.com/monic/alert"
 	"bconf.com/monic/config"
+	"bconf.com/monic/monitor"
 	"bconf.com/monic/server"
 )
 
@@ -32,8 +34,33 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create all dependencies
+	systemMonitor := monitor.NewSystemMonitor(&cfg.SystemChecks)
+	httpMonitor := monitor.NewHTTPMonitor()
+	dockerMonitor := monitor.NewDockerMonitor(&cfg.DockerChecks)
+	alertManager := alert.NewAlertManager(&cfg.Alerting, cfg.AppName)
+	stateManager := alert.NewStateManager()
+	storage := server.NewStorageManager(100)
+	
+	statsServer := server.NewStatsServer(
+		&cfg.HTTPServer,
+		systemMonitor,
+		storage,
+		stateManager,
+	)
+
 	// Create and start monitoring service
-	service := server.NewMonitorService(cfg)
+	service := server.NewMonitorService(
+		cfg,
+		systemMonitor,
+		httpMonitor,
+		dockerMonitor,
+		alertManager,
+		stateManager,
+		storage,
+		statsServer,
+	)
+	
 	if err := service.Start(); err != nil {
 		slog.Error("Failed to start monitoring service", "error", err)
 		os.Exit(1)

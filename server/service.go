@@ -26,29 +26,29 @@ type MonitorService struct {
 	startTime     time.Time
 }
 
-// NewMonitorService creates a new monitoring service instance
-func NewMonitorService(config *types.Config) *MonitorService {
-	service := &MonitorService{
+// NewMonitorService creates a new monitoring service instance with injected dependencies
+func NewMonitorService(
+	config *types.Config,
+	systemMonitor *monitor.SystemMonitor,
+	httpMonitor *monitor.HTTPMonitor,
+	dockerMonitor *monitor.DockerMonitor,
+	alertManager *alert.AlertManager,
+	stateManager *alert.StateManager,
+	storage *StorageManager,
+	statsServer *StatsServer,
+) *MonitorService {
+	return &MonitorService{
 		config:        config,
-		systemMonitor: monitor.NewSystemMonitor(&config.SystemChecks),
-		httpMonitor:   monitor.NewHTTPMonitor(),
-		dockerMonitor: monitor.NewDockerMonitor(&config.DockerChecks),
-		alertManager:  alert.NewAlertManager(&config.Alerting, config.AppName),
-		stateManager:  alert.NewStateManager(),
-		storage:       NewStorageManager(100),
+		systemMonitor: systemMonitor,
+		httpMonitor:   httpMonitor,
+		dockerMonitor: dockerMonitor,
+		alertManager:  alertManager,
+		stateManager:  stateManager,
+		storage:       storage,
+		statsServer:   statsServer,
 		stopChan:      make(chan struct{}),
 		startTime:     time.Now(),
 	}
-
-	// Initialize stats server
-	service.statsServer = NewStatsServer(
-		&config.HTTPServer,
-		service.systemMonitor,
-		service.storage,
-		service.stateManager,
-	)
-
-	return service
 }
 
 // Start begins the monitoring service
