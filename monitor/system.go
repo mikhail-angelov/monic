@@ -165,6 +165,23 @@ func (sm *SystemMonitor) GetSystemInfo() map[string]interface{} {
 	return info
 }
 
+// GetThresholds returns the configured threshold values
+func (sm *SystemMonitor) GetThresholds() map[string]interface{} {
+	if sm.config == nil {
+		return map[string]interface{}{
+			"cpu_threshold":    80,
+			"memory_threshold": 85,
+			"disk_threshold":   90,
+		}
+	}
+
+	return map[string]interface{}{
+		"cpu_threshold":    sm.config.CPUThreshold,
+		"memory_threshold": sm.config.MemoryThreshold,
+		"disk_threshold":   sm.config.DiskThreshold,
+	}
+}
+
 // getHostInfo returns basic host information
 func (sm *SystemMonitor) getHostInfo() (map[string]interface{}, error) {
 	info := make(map[string]interface{})

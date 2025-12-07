@@ -117,34 +117,22 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	}
 
 	// System information
-	if s.systemMonitor != nil {
-		systemInfo := s.systemMonitor.GetSystemInfo()
-		response["system_info"] = systemInfo
-	} else {
-		response["system_info"] = map[string]interface{}{
-			"hostname": "unknown",
-			"platform": "unknown",
-			"arch":     "unknown",
-		}
-	}
+	systemInfo := s.systemMonitor.GetSystemInfo()
+	response["system_info"] = systemInfo
 
 	// Current system stats
-	if s.storage != nil {
-		latestStats := s.storage.GetLatestSystemStats()
-		if latestStats != nil {
-			response["current_system_stats"] = map[string]interface{}{
-				"timestamp": latestStats.Timestamp.Format(time.RFC3339),
-				"cpu_usage": latestStats.CPUUsage,
-				"memory_usage": map[string]interface{}{
-					"total":        latestStats.MemoryUsage.Total,
-					"used":         latestStats.MemoryUsage.Used,
-					"free":         latestStats.MemoryUsage.Free,
-					"used_percent": latestStats.MemoryUsage.UsedPercent,
-				},
-				"disk_usage": latestStats.DiskUsage,
-			}
-		} else {
-			response["current_system_stats"] = nil
+	latestStats := s.storage.GetLatestSystemStats()
+	if latestStats != nil {
+		response["current_system_stats"] = map[string]interface{}{
+			"timestamp": latestStats.Timestamp.Format(time.RFC3339),
+			"cpu_usage": latestStats.CPUUsage,
+			"memory_usage": map[string]interface{}{
+				"total":        latestStats.MemoryUsage.Total,
+				"used":         latestStats.MemoryUsage.Used,
+				"free":         latestStats.MemoryUsage.Free,
+				"used_percent": latestStats.MemoryUsage.UsedPercent,
+			},
+			"disk_usage": latestStats.DiskUsage,
 		}
 	} else {
 		response["current_system_stats"] = nil
@@ -154,25 +142,14 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	response["http_checks"] = s.getHTTPChecksStatus()
 
 	// Alert status
-	if s.storage != nil {
-		alertsCount := s.storage.GetAlertsCount()
-		response["alerts"] = map[string]interface{}{
-			"active_alerts": alertsCount,
-			"recent_alerts": s.getRecentAlerts(),
-		}
-	} else {
-		response["alerts"] = map[string]interface{}{
-			"active_alerts": 0,
-			"recent_alerts": []map[string]interface{}{},
-		}
+	alertsCount := s.storage.GetAlertsCount()
+	response["alerts"] = map[string]interface{}{
+		"active_alerts": alertsCount,
+		"recent_alerts": s.getRecentAlerts(),
 	}
 
 	// Monitoring thresholds (from system monitor)
-	response["thresholds"] = map[string]interface{}{
-		"cpu_threshold":    80, // These would come from config
-		"memory_threshold": 85,
-		"disk_threshold":   90,
-	}
+	response["thresholds"] = s.systemMonitor.GetThresholds()
 
 	return response
 }
@@ -180,10 +157,6 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 // getHTTPChecksStatus returns the status of all HTTP checks
 func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 	var checks []map[string]interface{}
-
-	if s.storage == nil {
-		return checks
-	}
 
 	httpHistory := s.storage.GetHTTPCheckResults()
 	if len(httpHistory) == 0 {
@@ -237,10 +210,6 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 // getRecentAlerts returns recent alerts
 func (s *StatsServer) getRecentAlerts() []map[string]interface{} {
 	var recentAlerts []map[string]interface{}
-
-	if s.storage == nil {
-		return recentAlerts
-	}
 
 	alerts := s.storage.GetAlerts()
 	if len(alerts) == 0 {

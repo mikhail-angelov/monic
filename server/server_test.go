@@ -20,8 +20,11 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
-		DiskPaths: []string{"/"},
-		Interval:  60,
+		DiskPaths:       []string{"/"},
+		Interval:        60,
+		CPUThreshold:    75,
+		MemoryThreshold: 80,
+		DiskThreshold:   85,
 	})
 
 	storage := NewStorageManager(100)
@@ -127,6 +130,23 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	if int(alertsData["active_alerts"].(float64)) != 1 {
 		t.Errorf("Expected 1 active alert, got %v", alertsData["active_alerts"])
 	}
+
+	// Verify thresholds are returned correctly
+	thresholds, ok := response["thresholds"].(map[string]interface{})
+	if !ok {
+		t.Error("Expected thresholds to be a map")
+	}
+	
+	// Check that thresholds match the configured values
+	if int(thresholds["cpu_threshold"].(float64)) != 75 {
+		t.Errorf("Expected cpu_threshold 75, got %v", thresholds["cpu_threshold"])
+	}
+	if int(thresholds["memory_threshold"].(float64)) != 80 {
+		t.Errorf("Expected memory_threshold 80, got %v", thresholds["memory_threshold"])
+	}
+	if int(thresholds["disk_threshold"].(float64)) != 85 {
+		t.Errorf("Expected disk_threshold 85, got %v", thresholds["disk_threshold"])
+	}
 }
 
 func TestStatsServer_HandleStats_HTML(t *testing.T) {
@@ -137,8 +157,16 @@ func TestStatsServer_HandleStats_HTML(t *testing.T) {
 		Password: "monic123",
 	}
 
+	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
+		DiskPaths:       []string{"/"},
+		Interval:        60,
+		CPUThreshold:    75,
+		MemoryThreshold: 80,
+		DiskThreshold:   85,
+	})
+	
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, nil, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Create a test request (default Accept header)
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -171,8 +199,16 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 		Password: "monic123",
 	}
 
+	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
+		DiskPaths:       []string{"/"},
+		Interval:        60,
+		CPUThreshold:    75,
+		MemoryThreshold: 80,
+		DiskThreshold:   85,
+	})
+	
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, nil, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test without authentication
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -214,8 +250,16 @@ func TestStatsServer_NoAuthWhenDisabled(t *testing.T) {
 		// No username/password configured
 	}
 
+	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
+		DiskPaths:       []string{"/"},
+		Interval:        60,
+		CPUThreshold:    75,
+		MemoryThreshold: 80,
+		DiskThreshold:   85,
+	})
+	
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, nil, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test without authentication when no credentials are configured
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -234,8 +278,16 @@ func TestStatsServer_MethodNotAllowed(t *testing.T) {
 		Port:    8080,
 	}
 
+	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
+		DiskPaths:       []string{"/"},
+		Interval:        60,
+		CPUThreshold:    75,
+		MemoryThreshold: 80,
+		DiskThreshold:   85,
+	})
+	
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, nil, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test with POST method (should be rejected)
 	req := httptest.NewRequest("POST", "/stats", nil)
