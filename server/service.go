@@ -283,35 +283,6 @@ func (ms *MonitorService) getDiskUsageSummary(diskUsage map[string]types.DiskSta
 	return fmt.Sprintf("[%s]", stringJoin(summary, ", "))
 }
 
-// GetStatus returns the current status of the monitoring service
-func (ms *MonitorService) GetStatus() map[string]interface{} {
-	status := make(map[string]interface{})
-
-	// Basic service status
-	status["service"] = "running"
-	status["started_at"] = time.Now().Format(time.RFC3339)
-
-	// System information
-	systemInfo := ms.systemMonitor.GetSystemInfo()
-	status["system_info"] = systemInfo
-
-	// Recent statistics
-	latestStats := ms.storage.GetLatestSystemStats()
-	if latestStats != nil {
-		status["latest_system_stats"] = latestStats
-	}
-
-	// HTTP monitoring status
-	httpHistory := ms.storage.GetHTTPCheckResults()
-	if len(httpHistory) > 0 {
-		status["http_stats"] = ms.httpMonitor.GetHTTPStats(httpHistory)
-	}
-
-	// Active alerts
-	status["active_alerts"] = ms.storage.GetAlertsCount()
-
-	return status
-}
 
 // stringJoin is a helper function to join strings
 func stringJoin(elems []string, sep string) string {

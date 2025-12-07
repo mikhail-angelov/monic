@@ -66,35 +66,6 @@ func TestNewMonitorService(t *testing.T) {
 	}
 }
 
-func TestMonitorService_GetStatus(t *testing.T) {
-	config := &types.Config{
-		SystemChecks: types.SystemChecksConfig{
-			Interval:        30,
-			CPUThreshold:    80,
-			MemoryThreshold: 85,
-			DiskThreshold:   90,
-			DiskPaths:       []string{"/"},
-		},
-		HTTPChecks: types.HTTPCheck{},
-	}
-
-	service := NewMonitorService(config)
-
-	status := service.GetStatus()
-
-	// Verify basic status structure
-	if status["service"] != "running" {
-		t.Errorf("Expected service status 'running', got '%s'", status["service"])
-	}
-
-	if status["system_info"] == nil {
-		t.Error("Expected system info in status")
-	}
-
-	if status["active_alerts"] == nil {
-		t.Error("Expected active alerts count in status")
-	}
-}
 
 func TestMonitorService_GetDiskUsageSummary(t *testing.T) {
 	config := &types.Config{
