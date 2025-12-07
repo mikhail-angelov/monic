@@ -15,13 +15,13 @@ import (
 type StatsServer struct {
 	config        *types.HTTPServerConfig
 	systemMonitor *monitor.SystemMonitor
-	storage       *StorageManager
+	storage       Storage
 	stateManager  interface{} // We'll use interface{} to avoid circular dependency
 	startTime     time.Time
 }
 
 // NewStatsServer creates a new stats server instance
-func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage *StorageManager, stateManager interface{}) *StatsServer {
+func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, stateManager interface{}) *StatsServer {	
 	return &StatsServer{
 		config:        config,
 		systemMonitor: systemMonitor,

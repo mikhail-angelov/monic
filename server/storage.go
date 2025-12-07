@@ -7,6 +7,23 @@ import (
 	"bconf.com/monic/types"
 )
 
+// Storage defines the interface for storage operations
+type Storage interface {
+	// Methods used by StatsServer
+	GetLatestSystemStats() *types.SystemStats
+	GetAlertsCount() int
+	GetHTTPCheckResults() []types.HTTPCheckResult
+	GetAlerts() []types.Alert
+	
+	// Methods used by MonitorService
+	AddSystemStats(stats types.SystemStats)
+	AddAlert(alert types.Alert)
+	AddAlerts(alerts []types.Alert)
+	AddHTTPCheckResult(result types.HTTPCheckResult)
+	AddDockerContainerStats(stats []types.DockerContainerStats)
+	ClearAlerts()
+}
+
 // StorageManager provides thread-safe storage for monitoring data
 type StorageManager struct {
 	alerts        []types.Alert
@@ -205,20 +222,6 @@ func (sm *StorageManager) GetAlertsCount() int {
 	sm.alertsMu.RLock()
 	defer sm.alertsMu.RUnlock()
 	return len(sm.alerts)
-}
-
-// GetSystemStatsCount returns the number of system stats entries
-func (sm *StorageManager) GetSystemStatsCount() int {
-	sm.statsHistoryMu.RLock()
-	defer sm.statsHistoryMu.RUnlock()
-	return len(sm.statsHistory)
-}
-
-// GetHTTPCheckResultsCount returns the number of HTTP check results
-func (sm *StorageManager) GetHTTPCheckResultsCount() int {
-	sm.httpHistoryMu.RLock()
-	defer sm.httpHistoryMu.RUnlock()
-	return len(sm.httpHistory)
 }
 
 // GetDockerContainerStatsCount returns the number of Docker container stats

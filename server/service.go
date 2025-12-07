@@ -20,7 +20,7 @@ type MonitorService struct {
 	alertManager  *alert.AlertManager
 	stateManager  *alert.StateManager
 	statsServer   *StatsServer
-	storage       *StorageManager
+	storage       Storage
 	stopChan      chan struct{}
 	wg            sync.WaitGroup
 	startTime     time.Time
@@ -34,9 +34,34 @@ func NewMonitorService(
 	dockerMonitor *monitor.DockerMonitor,
 	alertManager *alert.AlertManager,
 	stateManager *alert.StateManager,
-	storage *StorageManager,
+	storage Storage,
 	statsServer *StatsServer,
 ) *MonitorService {
+	if config == nil {
+		panic("config cannot be nil")
+	}
+	if systemMonitor == nil {
+		panic("systemMonitor cannot be nil")
+	}
+	if httpMonitor == nil {
+		panic("httpMonitor cannot be nil")
+	}
+	if dockerMonitor == nil {
+		panic("dockerMonitor cannot be nil")
+	}
+	if alertManager == nil {
+		panic("alertManager cannot be nil")
+	}
+	if stateManager == nil {
+		panic("stateManager cannot be nil")
+	}
+	if storage == nil {
+		panic("storage cannot be nil")
+	}
+	if statsServer == nil {
+		panic("statsServer cannot be nil")
+	}
+
 	return &MonitorService{
 		config:        config,
 		systemMonitor: systemMonitor,

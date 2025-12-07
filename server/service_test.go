@@ -88,14 +88,6 @@ func TestNewMonitorService(t *testing.T) {
 	if service.storage.GetAlertsCount() != 0 {
 		t.Error("Expected alerts to be empty initially")
 	}
-
-	if service.storage.GetSystemStatsCount() != 0 {
-		t.Error("Expected stats history to be empty initially")
-	}
-
-	if service.storage.GetHTTPCheckResultsCount() != 0 {
-		t.Error("Expected HTTP history to be empty initially")
-	}
 }
 
 

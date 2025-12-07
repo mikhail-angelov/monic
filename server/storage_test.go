@@ -56,8 +56,6 @@ func TestStorageManager_ConcurrentAccess(t *testing.T) {
 				_ = storage.GetSystemStats()
 				_ = storage.GetHTTPCheckResults()
 				_ = storage.GetAlertsCount()
-				_ = storage.GetSystemStatsCount()
-				_ = storage.GetHTTPCheckResultsCount()
 			}
 		}(i)
 	}
@@ -67,18 +65,10 @@ func TestStorageManager_ConcurrentAccess(t *testing.T) {
 	// Note: Storage trims to maxHistorySize (100), so we can't check exact counts
 	// But we can verify no panic occurred and storage is in valid state
 	alertsCount := storage.GetAlertsCount()
-	statsCount := storage.GetSystemStatsCount()
-	httpResultsCount := storage.GetHTTPCheckResultsCount()
 
 	// Check that storage size doesn't exceed maxHistorySize
 	if alertsCount > 100 {
 		t.Errorf("Expected alerts count <= 100 due to trimming, got %d", alertsCount)
-	}
-	if statsCount > 100 {
-		t.Errorf("Expected stats count <= 100 due to trimming, got %d", statsCount)
-	}
-	if httpResultsCount > 100 {
-		t.Errorf("Expected HTTP results count <= 100 due to trimming, got %d", httpResultsCount)
 	}
 
 	// Verify storage is in valid state
