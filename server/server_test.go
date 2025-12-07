@@ -24,49 +24,46 @@ func TestStatsServer_HandleStats(t *testing.T) {
 		Interval:  60,
 	})
 
-	statsHistory := []types.SystemStats{
-		{
-			Timestamp: time.Now(),
-			CPUUsage:  25.5,
-			MemoryUsage: types.MemoryStats{
-				Total:       8192,
-				Used:        2048,
-				Free:        6144,
+	storage := NewStorageManager(100)
+	
+	// Add test data to storage
+	storage.AddSystemStats(types.SystemStats{
+		Timestamp: time.Now(),
+		CPUUsage:  25.5,
+		MemoryUsage: types.MemoryStats{
+			Total:       8192,
+			Used:        2048,
+			Free:        6144,
+			UsedPercent: 25.0,
+		},
+		DiskUsage: map[string]types.DiskStats{
+			"/": {
+				Path:        "/",
+				Total:       1000000,
+				Used:        250000,
+				Free:        750000,
 				UsedPercent: 25.0,
 			},
-			DiskUsage: map[string]types.DiskStats{
-				"/": {
-					Path:        "/",
-					Total:       1000000,
-					Used:        250000,
-					Free:        750000,
-					UsedPercent: 25.0,
-				},
-			},
 		},
-	}
+	})
 
-	httpHistory := []types.HTTPCheckResult{
-		{
-			Name:         "test_service",
-			URL:          "http://localhost:8080/health",
-			StatusCode:   200,
-			ResponseTime: 150 * time.Millisecond,
-			Success:      true,
-			Timestamp:    time.Now(),
-		},
-	}
+	storage.AddHTTPCheckResult(types.HTTPCheckResult{
+		Name:         "test_service",
+		URL:          "http://localhost:8080/health",
+		StatusCode:   200,
+		ResponseTime: 150 * time.Millisecond,
+		Success:      true,
+		Timestamp:    time.Now(),
+	})
 
-	alerts := []types.Alert{
-		{
-			Type:      "cpu",
-			Message:   "CPU usage high",
-			Level:     "warning",
-			Timestamp: time.Now(),
-		},
-	}
+	storage.AddAlert(types.Alert{
+		Type:      "cpu",
+		Message:   "CPU usage high",
+		Level:     "warning",
+		Timestamp: time.Now(),
+	})
 
-	server := NewStatsServer(config, systemMonitor, &statsHistory, &httpHistory, &alerts, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Create a test request
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -140,7 +137,8 @@ func TestStatsServer_HandleStats_HTML(t *testing.T) {
 		Password: "monic123",
 	}
 
-	server := NewStatsServer(config, nil, nil, nil, nil, nil)
+	storage := NewStorageManager(100)
+	server := NewStatsServer(config, nil, storage, nil)
 
 	// Create a test request (default Accept header)
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -173,7 +171,8 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 		Password: "monic123",
 	}
 
-	server := NewStatsServer(config, nil, nil, nil, nil, nil)
+	storage := NewStorageManager(100)
+	server := NewStatsServer(config, nil, storage, nil)
 
 	// Test without authentication
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -215,7 +214,8 @@ func TestStatsServer_NoAuthWhenDisabled(t *testing.T) {
 		// No username/password configured
 	}
 
-	server := NewStatsServer(config, nil, nil, nil, nil, nil)
+	storage := NewStorageManager(100)
+	server := NewStatsServer(config, nil, storage, nil)
 
 	// Test without authentication when no credentials are configured
 	req := httptest.NewRequest("GET", "/stats", nil)
@@ -234,7 +234,8 @@ func TestStatsServer_MethodNotAllowed(t *testing.T) {
 		Port:    8080,
 	}
 
-	server := NewStatsServer(config, nil, nil, nil, nil, nil)
+	storage := NewStorageManager(100)
+	server := NewStatsServer(config, nil, storage, nil)
 
 	// Test with POST method (should be rejected)
 	req := httptest.NewRequest("POST", "/stats", nil)

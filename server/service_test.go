@@ -48,15 +48,20 @@ func TestNewMonitorService(t *testing.T) {
 		t.Error("Expected stop channel to be initialized")
 	}
 
-	if len(service.alerts) != 0 {
+	if service.storage == nil {
+		t.Error("Expected storage manager to be initialized")
+	}
+
+	// Check storage is empty initially
+	if service.storage.GetAlertsCount() != 0 {
 		t.Error("Expected alerts to be empty initially")
 	}
 
-	if len(service.statsHistory) != 0 {
+	if service.storage.GetSystemStatsCount() != 0 {
 		t.Error("Expected stats history to be empty initially")
 	}
 
-	if len(service.httpHistory) != 0 {
+	if service.storage.GetHTTPCheckResultsCount() != 0 {
 		t.Error("Expected HTTP history to be empty initially")
 	}
 }
@@ -214,8 +219,8 @@ func TestMonitorService_ProcessAlerts(t *testing.T) {
 
 	service := NewMonitorService(config)
 
-	// Add some test alerts
-	service.alerts = []types.Alert{
+	// Add some test alerts using storage manager
+	alerts := []types.Alert{
 		{
 			Type:      "cpu",
 			Message:   "CPU usage high",
@@ -229,13 +234,19 @@ func TestMonitorService_ProcessAlerts(t *testing.T) {
 			Timestamp: time.Now(),
 		},
 	}
+	service.storage.AddAlerts(alerts)
+
+	// Verify alerts were added
+	if service.storage.GetAlertsCount() != 2 {
+		t.Errorf("Expected 2 alerts before processing, got %d", service.storage.GetAlertsCount())
+	}
 
 	// Process alerts (this would normally log them)
 	service.processAlerts()
 
 	// After processing, alerts should be cleared
-	if len(service.alerts) != 0 {
-		t.Errorf("Expected alerts to be cleared after processing, got %d", len(service.alerts))
+	if service.storage.GetAlertsCount() != 0 {
+		t.Errorf("Expected alerts to be cleared after processing, got %d", service.storage.GetAlertsCount())
 	}
 }
 

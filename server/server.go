@@ -15,21 +15,17 @@ import (
 type StatsServer struct {
 	config        *types.HTTPServerConfig
 	systemMonitor *monitor.SystemMonitor
-	statsHistory  *[]types.SystemStats
-	httpHistory   *[]types.HTTPCheckResult
-	alerts        *[]types.Alert
+	storage       *StorageManager
 	stateManager  interface{} // We'll use interface{} to avoid circular dependency
 	startTime     time.Time
 }
 
 // NewStatsServer creates a new stats server instance
-func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, statsHistory *[]types.SystemStats, httpHistory *[]types.HTTPCheckResult, alerts *[]types.Alert, stateManager interface{}) *StatsServer {
+func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage *StorageManager, stateManager interface{}) *StatsServer {
 	return &StatsServer{
 		config:        config,
 		systemMonitor: systemMonitor,
-		statsHistory:  statsHistory,
-		httpHistory:   httpHistory,
-		alerts:        alerts,
+		storage:       storage,
 		stateManager:  stateManager,
 		startTime:     time.Now(),
 	}
@@ -133,18 +129,22 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	}
 
 	// Current system stats
-	if s.statsHistory != nil && len(*s.statsHistory) > 0 {
-		latestStats := (*s.statsHistory)[len(*s.statsHistory)-1]
-		response["current_system_stats"] = map[string]interface{}{
-			"timestamp": latestStats.Timestamp.Format(time.RFC3339),
-			"cpu_usage": latestStats.CPUUsage,
-			"memory_usage": map[string]interface{}{
-				"total":        latestStats.MemoryUsage.Total,
-				"used":         latestStats.MemoryUsage.Used,
-				"free":         latestStats.MemoryUsage.Free,
-				"used_percent": latestStats.MemoryUsage.UsedPercent,
-			},
-			"disk_usage": latestStats.DiskUsage,
+	if s.storage != nil {
+		latestStats := s.storage.GetLatestSystemStats()
+		if latestStats != nil {
+			response["current_system_stats"] = map[string]interface{}{
+				"timestamp": latestStats.Timestamp.Format(time.RFC3339),
+				"cpu_usage": latestStats.CPUUsage,
+				"memory_usage": map[string]interface{}{
+					"total":        latestStats.MemoryUsage.Total,
+					"used":         latestStats.MemoryUsage.Used,
+					"free":         latestStats.MemoryUsage.Free,
+					"used_percent": latestStats.MemoryUsage.UsedPercent,
+				},
+				"disk_usage": latestStats.DiskUsage,
+			}
+		} else {
+			response["current_system_stats"] = nil
 		}
 	} else {
 		response["current_system_stats"] = nil
@@ -154,9 +154,10 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	response["http_checks"] = s.getHTTPChecksStatus()
 
 	// Alert status
-	if s.alerts != nil {
+	if s.storage != nil {
+		alertsCount := s.storage.GetAlertsCount()
 		response["alerts"] = map[string]interface{}{
-			"active_alerts": len(*s.alerts),
+			"active_alerts": alertsCount,
 			"recent_alerts": s.getRecentAlerts(),
 		}
 	} else {
@@ -180,13 +181,18 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 	var checks []map[string]interface{}
 
-	if s.httpHistory == nil {
+	if s.storage == nil {
+		return checks
+	}
+
+	httpHistory := s.storage.GetHTTPCheckResults()
+	if len(httpHistory) == 0 {
 		return checks
 	}
 
 	// Group HTTP results by name to get latest status
 	latestResults := make(map[string]types.HTTPCheckResult)
-	for _, result := range *s.httpHistory {
+	for _, result := range httpHistory {
 		if existing, exists := latestResults[result.Name]; !exists || result.Timestamp.After(existing.Timestamp) {
 			latestResults[result.Name] = result
 		}
@@ -194,7 +200,7 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 
 	// Find last failure for each check
 	lastFailures := make(map[string]time.Time)
-	for _, result := range *s.httpHistory {
+	for _, result := range httpHistory {
 		if !result.Success {
 			if existing, exists := lastFailures[result.Name]; !exists || result.Timestamp.After(existing) {
 				lastFailures[result.Name] = result.Timestamp
@@ -232,12 +238,16 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 func (s *StatsServer) getRecentAlerts() []map[string]interface{} {
 	var recentAlerts []map[string]interface{}
 
-	if s.alerts == nil {
+	if s.storage == nil {
+		return recentAlerts
+	}
+
+	alerts := s.storage.GetAlerts()
+	if len(alerts) == 0 {
 		return recentAlerts
 	}
 
 	// Get last 10 alerts (or all if less than 10)
-	alerts := *s.alerts
 	start := 0
 	if len(alerts) > 10 {
 		start = len(alerts) - 10

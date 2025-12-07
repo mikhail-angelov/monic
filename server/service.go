@@ -20,12 +20,9 @@ type MonitorService struct {
 	alertManager  *alert.AlertManager
 	stateManager  *alert.StateManager
 	statsServer   *StatsServer
+	storage       *StorageManager
 	stopChan      chan struct{}
 	wg            sync.WaitGroup
-	alerts        []types.Alert
-	statsHistory  []types.SystemStats
-	httpHistory   []types.HTTPCheckResult
-	dockerHistory []types.DockerContainerStats
 	startTime     time.Time
 }
 
@@ -38,11 +35,8 @@ func NewMonitorService(config *types.Config) *MonitorService {
 		dockerMonitor: monitor.NewDockerMonitor(&config.DockerChecks),
 		alertManager:  alert.NewAlertManager(&config.Alerting, config.AppName),
 		stateManager:  alert.NewStateManager(),
+		storage:       NewStorageManager(100),
 		stopChan:      make(chan struct{}),
-		alerts:        make([]types.Alert, 0),
-		statsHistory:  make([]types.SystemStats, 0),
-		httpHistory:   make([]types.HTTPCheckResult, 0),
-		dockerHistory: make([]types.DockerContainerStats, 0),
 		startTime:     time.Now(),
 	}
 
@@ -50,9 +44,7 @@ func NewMonitorService(config *types.Config) *MonitorService {
 	service.statsServer = NewStatsServer(
 		&config.HTTPServer,
 		service.systemMonitor,
-		&service.statsHistory,
-		&service.httpHistory,
-		&service.alerts,
+		service.storage,
 		service.stateManager,
 	)
 
@@ -192,15 +184,12 @@ func (ms *MonitorService) collectSystemStats() {
 	}
 
 	// Add to history (keep last 100 entries)
-	ms.statsHistory = append(ms.statsHistory, *stats)
-	if len(ms.statsHistory) > 100 {
-		ms.statsHistory = ms.statsHistory[1:]
-	}
+	ms.storage.AddSystemStats(*stats)
 
 	// Use state manager to generate alerts with 3 consecutive failures logic
 	alerts := ms.stateManager.UpdateSystemState(stats, &ms.config.SystemChecks)
 	if len(alerts) > 0 {
-		ms.alerts = append(ms.alerts, alerts...)
+		ms.storage.AddAlerts(alerts)
 		slog.Info("System alerts generated", "count", len(alerts))
 	}
 
@@ -217,15 +206,12 @@ func (ms *MonitorService) collectHTTPStats() {
 	results := []types.HTTPCheckResult{result}
 
 	// Add to history (keep last 100 entries)
-	ms.httpHistory = append(ms.httpHistory, result)
-	if len(ms.httpHistory) > 100 {
-		ms.httpHistory = ms.httpHistory[len(ms.httpHistory)-100:]
-	}
+	ms.storage.AddHTTPCheckResult(result)
 
 	// Use state manager to generate alerts with 3 consecutive failures logic
 	alerts := ms.stateManager.UpdateHTTPState(results)
 	if len(alerts) > 0 {
-		ms.alerts = append(ms.alerts, alerts...)
+		ms.storage.AddAlerts(alerts)
 		slog.Info("HTTP alerts generated", "count", len(alerts))
 	}
 
@@ -247,17 +233,14 @@ func (ms *MonitorService) collectDockerStats() {
 	}
 
 	// Add to history (keep last 100 entries)
-	ms.dockerHistory = append(ms.dockerHistory, stats...)
-	if len(ms.dockerHistory) > 100 {
-		ms.dockerHistory = ms.dockerHistory[len(ms.dockerHistory)-100:]
-	}
+	ms.storage.AddDockerContainerStats(stats)
 
 	// Check for container status alerts
 	alerts, err := ms.dockerMonitor.CheckContainerStatus()
 	if err != nil {
 		slog.Error("Error checking Docker container status", "error", err)
 	} else if len(alerts) > 0 {
-		ms.alerts = append(ms.alerts, alerts...)
+		ms.storage.AddAlerts(alerts)
 		slog.Info("Docker alerts generated", "count", len(alerts))
 	}
 
@@ -272,22 +255,23 @@ func (ms *MonitorService) collectDockerStats() {
 
 // processAlerts processes and reports alerts
 func (ms *MonitorService) processAlerts() {
-	if len(ms.alerts) == 0 {
+	alerts := ms.storage.GetAlerts()
+	if len(alerts) == 0 {
 		return
 	}
 
 	// Log alerts to console
-	for _, alert := range ms.alerts {
+	for _, alert := range alerts {
 		slog.Info("ALERT", "level", alert.Level, "type", alert.Type, "message", alert.Message)
 	}
 
 	// Send alerts via configured channels (email, Mailgun, etc.)
-	if err := ms.alertManager.SendAlerts(ms.alerts); err != nil {
+	if err := ms.alertManager.SendAlerts(alerts); err != nil {
 		slog.Error("Failed to send some alerts", "error", err)
 	}
 
 	// Clear processed alerts
-	ms.alerts = make([]types.Alert, 0)
+	ms.storage.ClearAlerts()
 }
 
 // getDiskUsageSummary creates a summary of disk usage
@@ -312,17 +296,19 @@ func (ms *MonitorService) GetStatus() map[string]interface{} {
 	status["system_info"] = systemInfo
 
 	// Recent statistics
-	if len(ms.statsHistory) > 0 {
-		status["latest_system_stats"] = ms.statsHistory[len(ms.statsHistory)-1]
+	latestStats := ms.storage.GetLatestSystemStats()
+	if latestStats != nil {
+		status["latest_system_stats"] = latestStats
 	}
 
 	// HTTP monitoring status
-	if len(ms.httpHistory) > 0 {
-		status["http_stats"] = ms.httpMonitor.GetHTTPStats(ms.httpHistory)
+	httpHistory := ms.storage.GetHTTPCheckResults()
+	if len(httpHistory) > 0 {
+		status["http_stats"] = ms.httpMonitor.GetHTTPStats(httpHistory)
 	}
 
 	// Active alerts
-	status["active_alerts"] = len(ms.alerts)
+	status["active_alerts"] = ms.storage.GetAlertsCount()
 
 	return status
 }
