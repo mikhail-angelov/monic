@@ -16,11 +16,11 @@ func TestStorageManager_ConcurrentAccess(t *testing.T) {
 	numOperations := 100
 
 	// Test concurrent writes
-	for i := 0; i < numGoroutines; i++ {
+	for i := range numGoroutines {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			for j := 0; j < numOperations; j++ {
+			for j := range numOperations {
 				// Add system stats
 				storage.AddSystemStats(types.SystemStats{
 					Timestamp: time.Now(),
@@ -82,7 +82,7 @@ func TestStorageManager_ClearAlerts(t *testing.T) {
 	storage := NewStorageManager(100)
 
 	// Add some alerts
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		storage.AddAlert(types.Alert{
 			Type:      "test",
 			Message:   "Test alert",
@@ -107,7 +107,7 @@ func TestStorageManager_GetLatestSystemStats(t *testing.T) {
 	storage := NewStorageManager(100)
 
 	// Add multiple stats
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		storage.AddSystemStats(types.SystemStats{
 			Timestamp: time.Now().Add(time.Duration(i) * time.Second),
 			CPUUsage:  float64(i * 10),

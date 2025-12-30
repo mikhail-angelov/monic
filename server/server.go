@@ -16,12 +16,12 @@ type StatsServer struct {
 	config        *types.HTTPServerConfig
 	systemMonitor *monitor.SystemMonitor
 	storage       Storage
-	stateManager  interface{} // We'll use interface{} to avoid circular dependency
+	stateManager  any // We'll use any to avoid circular dependency
 	startTime     time.Time
 }
 
 // NewStatsServer creates a new stats server instance
-func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, stateManager interface{}) *StatsServer {	
+func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, stateManager any) *StatsServer {
 	return &StatsServer{
 		config:        config,
 		systemMonitor: systemMonitor,
@@ -42,8 +42,9 @@ func (s *StatsServer) Start() error {
 	mux.HandleFunc("/stats", s.basicAuth(s.handleStats))
 
 	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.config.Port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", s.config.Port),
+		Handler:           mux,
+		ReadHeaderTimeout: 30 * time.Second,
 	}
 
 	slog.Info("Starting HTTP stats server", "port", s.config.Port)
@@ -89,7 +90,7 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	stats := s.getStatsResponse()
-	
+
 	// Check if client explicitly requests JSON
 	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
@@ -106,11 +107,11 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 // getStatsResponse builds the complete stats response
-func (s *StatsServer) getStatsResponse() map[string]interface{} {
-	response := make(map[string]interface{})
+func (s *StatsServer) getStatsResponse() map[string]any {
+	response := make(map[string]any)
 
 	// Service status
-	response["service_status"] = map[string]interface{}{
+	response["service_status"] = map[string]any{
 		"status":     "running",
 		"started_at": s.startTime.Format(time.RFC3339),
 		"uptime":     time.Since(s.startTime).String(),
@@ -123,10 +124,10 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 	// Current system stats
 	latestStats := s.storage.GetLatestSystemStats()
 	if latestStats != nil {
-		response["current_system_stats"] = map[string]interface{}{
+		response["current_system_stats"] = map[string]any{
 			"timestamp": latestStats.Timestamp.Format(time.RFC3339),
 			"cpu_usage": latestStats.CPUUsage,
-			"memory_usage": map[string]interface{}{
+			"memory_usage": map[string]any{
 				"total":        latestStats.MemoryUsage.Total,
 				"used":         latestStats.MemoryUsage.Used,
 				"free":         latestStats.MemoryUsage.Free,
@@ -143,7 +144,7 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 
 	// Alert status
 	alertsCount := s.storage.GetAlertsCount()
-	response["alerts"] = map[string]interface{}{
+	response["alerts"] = map[string]any{
 		"active_alerts": alertsCount,
 		"recent_alerts": s.getRecentAlerts(),
 	}
@@ -155,13 +156,13 @@ func (s *StatsServer) getStatsResponse() map[string]interface{} {
 }
 
 // getHTTPChecksStatus returns the status of all HTTP checks
-func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
-	var checks []map[string]interface{}
-
+func (s *StatsServer) getHTTPChecksStatus() []map[string]any {
 	httpHistory := s.storage.GetHTTPCheckResults()
 	if len(httpHistory) == 0 {
-		return checks
+		return []map[string]any{}
 	}
+
+	checks := make([]map[string]any, 0, len(httpHistory))
 
 	// Group HTTP results by name to get latest status
 	latestResults := make(map[string]types.HTTPCheckResult)
@@ -183,7 +184,7 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 
 	// Build response for each check
 	for name, result := range latestResults {
-		check := map[string]interface{}{
+		check := map[string]any{
 			"name":          name,
 			"url":           result.URL,
 			"status":        "success",
@@ -208,8 +209,8 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]interface{} {
 }
 
 // getRecentAlerts returns recent alerts
-func (s *StatsServer) getRecentAlerts() []map[string]interface{} {
-	var recentAlerts []map[string]interface{}
+func (s *StatsServer) getRecentAlerts() []map[string]any {
+	var recentAlerts []map[string]any
 
 	alerts := s.storage.GetAlerts()
 	if len(alerts) == 0 {
@@ -224,7 +225,7 @@ func (s *StatsServer) getRecentAlerts() []map[string]interface{} {
 
 	for i := start; i < len(alerts); i++ {
 		alert := alerts[i]
-		recentAlerts = append(recentAlerts, map[string]interface{}{
+		recentAlerts = append(recentAlerts, map[string]any{
 			"type":      alert.Type,
 			"message":   alert.Message,
 			"level":     alert.Level,

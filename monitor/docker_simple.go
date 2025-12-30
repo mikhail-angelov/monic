@@ -63,7 +63,7 @@ func (dm *SimpleDockerMonitor) CheckContainers() ([]types.DockerContainerStats, 
 
 	// Parse JSON output
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	var stats []types.DockerContainerStats
+	stats := make([]types.DockerContainerStats, 0, len(lines))
 	now := time.Now()
 
 	for _, line := range lines {
@@ -71,20 +71,20 @@ func (dm *SimpleDockerMonitor) CheckContainers() ([]types.DockerContainerStats, 
 			continue
 		}
 
-		var containerData map[string]interface{}
+		var containerData map[string]any
 		if err := json.Unmarshal([]byte(line), &containerData); err != nil {
 			slog.Warn("Warning: failed to parse container JSON", "error", err)
 			continue
 		}
 
 		containerStats := types.DockerContainerStats{
-			ContainerID:  getString(containerData["ID"]),
-			Name:         getString(containerData["Names"]),
-			Status:       getString(containerData["Status"]),
-			State:        getString(containerData["State"]),
-			Running:      strings.Contains(getString(containerData["State"]), "running"),
-			Created:      now, // Not available in basic docker ps
-			Timestamp:    now,
+			ContainerID: getString(containerData["ID"]),
+			Name:        getString(containerData["Names"]),
+			Status:      getString(containerData["Status"]),
+			State:       getString(containerData["State"]),
+			Running:     strings.Contains(getString(containerData["State"]), "running"),
+			Created:     now, // Not available in basic docker ps
+			Timestamp:   now,
 		}
 
 		// Filter containers if specific ones are configured
@@ -163,8 +163,8 @@ func (dm *SimpleDockerMonitor) CheckContainerStatus() ([]types.Alert, error) {
 }
 
 // GetContainerSummary returns a summary of container status
-func (dm *SimpleDockerMonitor) GetContainerSummary(stats []types.DockerContainerStats) map[string]interface{} {
-	summary := make(map[string]interface{})
+func (dm *SimpleDockerMonitor) GetContainerSummary(stats []types.DockerContainerStats) map[string]any {
+	summary := make(map[string]any)
 
 	total := len(stats)
 	running := 0
@@ -206,7 +206,7 @@ func (dm *SimpleDockerMonitor) getContainerInfo(containerID string) (*types.Dock
 		return nil, fmt.Errorf("failed to inspect container %s: %w", containerID, err)
 	}
 
-	var containerInfo []map[string]interface{}
+	var containerInfo []map[string]any
 	if err := json.Unmarshal(output, &containerInfo); err != nil {
 		return nil, fmt.Errorf("failed to parse container inspect JSON: %w", err)
 	}
@@ -216,10 +216,10 @@ func (dm *SimpleDockerMonitor) getContainerInfo(containerID string) (*types.Dock
 	}
 
 	info := containerInfo[0]
-	state := info["State"].(map[string]interface{})
+	state := info["State"].(map[string]any)
 
 	stats := &types.DockerContainerStats{
-		ExitCode:     int(state["ExitCode"].(float64)),
+		ExitCode: int(state["ExitCode"].(float64)),
 	}
 
 	if errorMsg, ok := state["Error"].(string); ok && errorMsg != "" {
@@ -229,8 +229,8 @@ func (dm *SimpleDockerMonitor) getContainerInfo(containerID string) (*types.Dock
 	return stats, nil
 }
 
-// getString safely extracts string from interface{}
-func getString(value interface{}) string {
+// getString safely extracts string from any
+func getString(value any) string {
 	if value == nil {
 		return ""
 	}

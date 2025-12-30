@@ -38,10 +38,10 @@ func main() {
 	systemMonitor := monitor.NewSystemMonitor(&cfg.SystemChecks)
 	httpMonitor := monitor.NewHTTPMonitor()
 	dockerMonitor := monitor.NewDockerMonitor(&cfg.DockerChecks)
-	alertManager := alert.NewAlertManager(&cfg.Alerting, cfg.AppName)
+	alertManager := alert.NewManager(&cfg.Alerting, cfg.AppName)
 	stateManager := alert.NewStateManager()
 	storage := server.NewStorageManager(100)
-	
+
 	statsServer := server.NewStatsServer(
 		&cfg.HTTPServer,
 		systemMonitor,
@@ -60,7 +60,7 @@ func main() {
 		storage,
 		statsServer,
 	)
-	
+
 	if err := service.Start(); err != nil {
 		slog.Error("Failed to start monitoring service", "error", err)
 		os.Exit(1)

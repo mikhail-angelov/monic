@@ -24,7 +24,7 @@ var funcMap = template.FuncMap{
 }
 
 // renderStatsHTML renders the stats page using the HTML template
-func renderStatsHTML(w http.ResponseWriter, stats map[string]interface{}) {
+func renderStatsHTML(w http.ResponseWriter, stats map[string]any) {
 	w.Header().Set("Content-Type", "text/html")
 
 	htmlBytes, err := templateFS.ReadFile("templates/stats.html")

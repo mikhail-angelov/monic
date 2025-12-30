@@ -63,7 +63,7 @@ func (sm *SystemMonitor) getCPUUsage() (float64, error) {
 	// Get CPU usage for a short interval to get current usage
 	percentages, err := cpu.Percent(1*time.Second, false)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get CPU usage: %w", err)
 	}
 
 	if len(percentages) == 0 {
@@ -79,7 +79,7 @@ func (sm *SystemMonitor) getMemoryUsage() (types.MemoryStats, error) {
 
 	virtualMem, err := mem.VirtualMemory()
 	if err != nil {
-		return stats, err
+		return stats, fmt.Errorf("failed to get memory stats: %w", err)
 	}
 
 	stats.Total = virtualMem.Total
@@ -96,7 +96,7 @@ func (sm *SystemMonitor) getDiskUsage(path string) (types.DiskStats, error) {
 
 	usage, err := disk.Usage(path)
 	if err != nil {
-		return stats, err
+		return stats, fmt.Errorf("failed to get disk usage for path %s: %w", path, err)
 	}
 
 	stats.Path = path
@@ -148,15 +148,15 @@ func (sm *SystemMonitor) CheckThresholds(stats *types.SystemStats, thresholds *t
 }
 
 // GetSystemInfo returns basic system information
-func (sm *SystemMonitor) GetSystemInfo() map[string]interface{} {
-	info := make(map[string]interface{})
+func (sm *SystemMonitor) GetSystemInfo() map[string]any {
+	info := make(map[string]any)
 
 	// Get host info
 	hostInfo, _ := sm.getHostInfo()
 	info["host"] = hostInfo
 
 	// Get runtime info
-	info["runtime"] = map[string]interface{}{
+	info["runtime"] = map[string]any{
 		"go_version":   runtime.Version(),
 		"num_cpu":      runtime.NumCPU(),
 		"goroutines":   runtime.NumGoroutine(),
@@ -167,16 +167,16 @@ func (sm *SystemMonitor) GetSystemInfo() map[string]interface{} {
 }
 
 // GetThresholds returns the configured threshold values
-func (sm *SystemMonitor) GetThresholds() map[string]interface{} {
+func (sm *SystemMonitor) GetThresholds() map[string]any {
 	if sm.config == nil {
-		return map[string]interface{}{
+		return map[string]any{
 			"cpu_threshold":    80,
 			"memory_threshold": 85,
 			"disk_threshold":   90,
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"cpu_threshold":    sm.config.CPUThreshold,
 		"memory_threshold": sm.config.MemoryThreshold,
 		"disk_threshold":   sm.config.DiskThreshold,
@@ -184,8 +184,8 @@ func (sm *SystemMonitor) GetThresholds() map[string]interface{} {
 }
 
 // getHostInfo returns basic host information
-func (sm *SystemMonitor) getHostInfo() (map[string]interface{}, error) {
-	info := make(map[string]interface{})
+func (sm *SystemMonitor) getHostInfo() (map[string]any, error) {
+	info := make(map[string]any)
 
 	// Get number of logical CPUs
 	numCPU := runtime.NumCPU()
@@ -194,7 +194,7 @@ func (sm *SystemMonitor) getHostInfo() (map[string]interface{}, error) {
 	// Get memory info
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
-		return info, err
+		return info, fmt.Errorf("failed to get memory info: %w", err)
 	}
 
 	info["total_memory"] = memInfo.Total

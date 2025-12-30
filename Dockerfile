@@ -1,8 +1,5 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
-
-# Install required packages for gopsutil
-RUN apk add --no-cache gcc musl-dev
+FROM golang:1.25-bookworm AS builder
 
 WORKDIR /app
 
@@ -15,10 +12,10 @@ COPY . .
 
 # Build the application using vendored dependencies
 ARG VERSION=dev
-RUN CGO_ENABLED=1 GOOS=linux go build -mod=vendor -a -installsuffix cgo -ldflags="-X main.version=${VERSION}" -o monic main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -ldflags="-X main.version=${VERSION}" -o monic main.go
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.22
 
 WORKDIR /app
 

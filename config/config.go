@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"bconf.com/monic/types"
@@ -19,7 +20,7 @@ func LoadConfig() (*types.Config, error) {
 
 	// Load from Environment Variables
 	if err := envconfig.Process("MONIC", config); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to process environment variables: %w", err)
 	}
 
 	// Calculate enabled status based on environment variables
@@ -28,10 +29,9 @@ func LoadConfig() (*types.Config, error) {
 	return config, nil
 }
 
-
 // calculateEnabledStatus determines which features are enabled based on environment variables
 func calculateEnabledStatus(config *types.Config) *types.Config {
-	
+
 	// Only set enabled status if not already set by envconfig
 	if !config.Alerting.Email.Enabled {
 		config.Alerting.Email.Enabled = isEmailAlertingEnabled()
@@ -54,12 +54,6 @@ func calculateEnabledStatus(config *types.Config) *types.Config {
 	}
 
 	return config
-}
-
-// isAlertingEnabled checks if any alerting environment variables are set
-func isAlertingEnabled() bool {
-	return isEmailAlertingEnabled() || isMailgunAlertingEnabled() || isTelegramAlertingEnabled() ||
-		os.Getenv("MONIC_ALERTING_LEVELS") != "" || os.Getenv("MONIC_ALERTING_COOLDOWN") != ""
 }
 
 // isEmailAlertingEnabled checks if email alerting environment variables are set

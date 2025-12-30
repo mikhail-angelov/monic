@@ -1,3 +1,6 @@
+// Package types contains type definitions used throughout the Monic monitoring system.
+//
+//revive:disable:var-naming
 package types
 
 import "time"

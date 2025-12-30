@@ -28,7 +28,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	
+
 	// Add test data to storage
 	storage.AddSystemStats(types.SystemStats{
 		Timestamp: time.Now(),
@@ -69,7 +69,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Create a test request
-	req := httptest.NewRequest("GET", "/stats", nil)
+	req := httptest.NewRequest("GET", "/stats", http.NoBody)
 	req.SetBasicAuth("admin", "monic123")
 	req.Header.Set("Accept", "application/json")
 
@@ -91,7 +91,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	// Parse the response body
-	var response map[string]interface{}
+	var response map[string]any
 	if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
 		t.Fatalf("Failed to parse response JSON: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	// Verify service status
-	serviceStatus, ok := response["service_status"].(map[string]interface{})
+	serviceStatus, ok := response["service_status"].(map[string]any)
 	if !ok {
 		t.Error("Expected service_status to be a map")
 	}
@@ -114,7 +114,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	// Verify HTTP checks
-	httpChecks, ok := response["http_checks"].([]interface{})
+	httpChecks, ok := response["http_checks"].([]any)
 	if !ok {
 		t.Error("Expected http_checks to be an array")
 	}
@@ -123,7 +123,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	// Verify alerts
-	alertsData, ok := response["alerts"].(map[string]interface{})
+	alertsData, ok := response["alerts"].(map[string]any)
 	if !ok {
 		t.Error("Expected alerts to be a map")
 	}
@@ -132,11 +132,11 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	// Verify thresholds are returned correctly
-	thresholds, ok := response["thresholds"].(map[string]interface{})
+	thresholds, ok := response["thresholds"].(map[string]any)
 	if !ok {
 		t.Error("Expected thresholds to be a map")
 	}
-	
+
 	// Check that thresholds match the configured values
 	if int(thresholds["cpu_threshold"].(float64)) != 75 {
 		t.Errorf("Expected cpu_threshold 75, got %v", thresholds["cpu_threshold"])
@@ -164,12 +164,12 @@ func TestStatsServer_HandleStats_HTML(t *testing.T) {
 		MemoryThreshold: 80,
 		DiskThreshold:   85,
 	})
-	
+
 	storage := NewStorageManager(100)
 	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Create a test request (default Accept header)
-	req := httptest.NewRequest("GET", "/stats", nil)
+	req := httptest.NewRequest("GET", "/stats", http.NoBody)
 	req.SetBasicAuth("admin", "monic123")
 
 	w := httptest.NewRecorder()
@@ -206,12 +206,12 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 		MemoryThreshold: 80,
 		DiskThreshold:   85,
 	})
-	
+
 	storage := NewStorageManager(100)
 	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test without authentication
-	req := httptest.NewRequest("GET", "/stats", nil)
+	req := httptest.NewRequest("GET", "/stats", http.NoBody)
 	w := httptest.NewRecorder()
 
 	server.basicAuth(server.handleStats)(w, req)
@@ -221,7 +221,7 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 	}
 
 	// Test with wrong credentials
-	req = httptest.NewRequest("GET", "/stats", nil)
+	req = httptest.NewRequest("GET", "/stats", http.NoBody)
 	req.SetBasicAuth("admin", "wrongpassword")
 	w = httptest.NewRecorder()
 
@@ -232,7 +232,7 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 	}
 
 	// Test with correct credentials
-	req = httptest.NewRequest("GET", "/stats", nil)
+	req = httptest.NewRequest("GET", "/stats", http.NoBody)
 	req.SetBasicAuth("admin", "monic123")
 	w = httptest.NewRecorder()
 
@@ -257,12 +257,12 @@ func TestStatsServer_NoAuthWhenDisabled(t *testing.T) {
 		MemoryThreshold: 80,
 		DiskThreshold:   85,
 	})
-	
+
 	storage := NewStorageManager(100)
 	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test without authentication when no credentials are configured
-	req := httptest.NewRequest("GET", "/stats", nil)
+	req := httptest.NewRequest("GET", "/stats", http.NoBody)
 	w := httptest.NewRecorder()
 
 	server.basicAuth(server.handleStats)(w, req)
@@ -285,12 +285,12 @@ func TestStatsServer_MethodNotAllowed(t *testing.T) {
 		MemoryThreshold: 80,
 		DiskThreshold:   85,
 	})
-	
+
 	storage := NewStorageManager(100)
 	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test with POST method (should be rejected)
-	req := httptest.NewRequest("POST", "/stats", nil)
+	req := httptest.NewRequest("POST", "/stats", http.NoBody)
 	w := httptest.NewRecorder()
 
 	server.handleStats(w, req)

@@ -17,7 +17,7 @@ type MonitorService struct {
 	systemMonitor *monitor.SystemMonitor
 	httpMonitor   *monitor.HTTPMonitor
 	dockerMonitor *monitor.DockerMonitor
-	alertManager  *alert.AlertManager
+	alertManager  *alert.Manager
 	stateManager  *alert.StateManager
 	statsServer   *StatsServer
 	storage       Storage
@@ -32,7 +32,7 @@ func NewMonitorService(
 	systemMonitor *monitor.SystemMonitor,
 	httpMonitor *monitor.HTTPMonitor,
 	dockerMonitor *monitor.DockerMonitor,
-	alertManager *alert.AlertManager,
+	alertManager *alert.Manager,
 	stateManager *alert.StateManager,
 	storage Storage,
 	statsServer *StatsServer,
@@ -276,13 +276,12 @@ func (ms *MonitorService) processAlerts() {
 
 // getDiskUsageSummary creates a summary of disk usage
 func (ms *MonitorService) getDiskUsageSummary(diskUsage map[string]types.DiskStats) string {
-	var summary []string
+	summary := make([]string, 0)
 	for path, stats := range diskUsage {
 		summary = append(summary, fmt.Sprintf("%s:%.1f%%", path, stats.UsedPercent))
 	}
 	return fmt.Sprintf("[%s]", stringJoin(summary, ", "))
 }
-
 
 // stringJoin is a helper function to join strings
 func stringJoin(elems []string, sep string) string {
@@ -293,12 +292,11 @@ func stringJoin(elems []string, sep string) string {
 		return elems[0]
 	}
 	n := len(sep) * (len(elems) - 1)
-	for i := 0; i < len(elems); i++ {
-		n += len(elems[i])
+	for _, elem := range elems {
+		n += len(elem)
 	}
 
-	var b []byte
-	b = make([]byte, n)
+	b := make([]byte, n)
 	bp := copy(b, elems[0])
 	for _, s := range elems[1:] {
 		bp += copy(b[bp:], sep)

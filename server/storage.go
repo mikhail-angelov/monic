@@ -14,7 +14,7 @@ type Storage interface {
 	GetAlertsCount() int
 	GetHTTPCheckResults() []types.HTTPCheckResult
 	GetAlerts() []types.Alert
-	
+
 	// Methods used by MonitorService
 	AddSystemStats(stats types.SystemStats)
 	AddAlert(alert types.Alert)
@@ -46,10 +46,10 @@ func NewStorageManager(maxHistorySize int) *StorageManager {
 	}
 
 	return &StorageManager{
-		alerts:        make([]types.Alert, 0),
-		statsHistory:  make([]types.SystemStats, 0),
-		httpHistory:   make([]types.HTTPCheckResult, 0),
-		dockerHistory: make([]types.DockerContainerStats, 0),
+		alerts:         make([]types.Alert, 0),
+		statsHistory:   make([]types.SystemStats, 0),
+		httpHistory:    make([]types.HTTPCheckResult, 0),
+		dockerHistory:  make([]types.DockerContainerStats, 0),
 		maxHistorySize: maxHistorySize,
 	}
 }
@@ -195,7 +195,7 @@ func (sm *StorageManager) GetDockerContainerStats() []types.DockerContainerStats
 }
 
 // GetStatus returns the current status of storage
-func (sm *StorageManager) GetStatus() map[string]interface{} {
+func (sm *StorageManager) GetStatus() map[string]any {
 	sm.alertsMu.RLock()
 	sm.statsHistoryMu.RLock()
 	sm.httpHistoryMu.RLock()
@@ -207,13 +207,13 @@ func (sm *StorageManager) GetStatus() map[string]interface{} {
 		sm.dockerHistoryMu.RUnlock()
 	}()
 
-	return map[string]interface{}{
-		"alerts_count":        len(sm.alerts),
-		"stats_history_count": len(sm.statsHistory),
-		"http_history_count":  len(sm.httpHistory),
+	return map[string]any{
+		"alerts_count":         len(sm.alerts),
+		"stats_history_count":  len(sm.statsHistory),
+		"http_history_count":   len(sm.httpHistory),
 		"docker_history_count": len(sm.dockerHistory),
-		"max_history_size":    sm.maxHistorySize,
-		"timestamp":           time.Now().Format(time.RFC3339),
+		"max_history_size":     sm.maxHistorySize,
+		"timestamp":            time.Now().Format(time.RFC3339),
 	}
 }
 

@@ -156,7 +156,7 @@ func TestSystemMonitor_GetSystemInfo(t *testing.T) {
 	}
 
 	// Validate runtime info structure
-	runtimeInfo, ok := info["runtime"].(map[string]interface{})
+	runtimeInfo, ok := info["runtime"].(map[string]any)
 	if !ok {
 		t.Error("Expected runtime info to be a map")
 	}

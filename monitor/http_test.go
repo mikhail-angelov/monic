@@ -269,7 +269,7 @@ func TestHTTPMonitor_GetHTTPStats(t *testing.T) {
 
 	stats := monitor.GetHTTPStats(results)
 
-	expectedStats := map[string]interface{}{
+	expectedStats := map[string]any{
 		"total_checks":         3,
 		"successful_checks":    2,
 		"failed_checks":        1,

@@ -69,7 +69,7 @@ func (dm *DockerMonitor) CheckContainers() ([]types.DockerContainerStats, error)
 		return nil, fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	var stats []types.DockerContainerStats
+	stats := make([]types.DockerContainerStats, 0, len(containers))
 	now := time.Now()
 
 	for _, c := range containers {
@@ -93,31 +93,29 @@ func (dm *DockerMonitor) CheckContainers() ([]types.DockerContainerStats, error)
 		}
 
 		containerStats := types.DockerContainerStats{
-			ContainerID:  c.ID[:12], // Short ID
-			Name:         getContainerName(c.Names),
-			Status:       c.Status,
-			State:        c.State,
-			Running:      c.State == "running",
-			Created:      time.Unix(c.Created, 0),
-			Timestamp:    now,
+			ContainerID: c.ID[:12], // Short ID
+			Name:        getContainerName(c.Names),
+			Status:      c.Status,
+			State:       c.State,
+			Running:     c.State == "running",
+			Created:     time.Unix(c.Created, 0),
+			Timestamp:   now,
 		}
 
 		// Get detailed container info
 		containerInfo, err := dm.client.ContainerInspect(ctx, c.ID)
-		if err == nil {
-			if containerInfo.State != nil {
-				if containerInfo.State.Running {
-					containerStats.StartedAt = containerInfo.State.StartedAt 
-				} else {
-					containerStats.FinishedAt = containerInfo.State.FinishedAt
-					containerStats.ExitCode = containerInfo.State.ExitCode
-					if containerInfo.State.Error != "" {
-						containerStats.Error = containerInfo.State.Error
-					}
-				}
-			}
-		} else {
+		if err != nil || containerInfo.State == nil {
 			slog.Warn("Warning: failed to inspect container", "id", c.ID[:12], "error", err)
+			continue
+		}
+		if containerInfo.State.Running {
+			containerStats.StartedAt = containerInfo.State.StartedAt
+		} else {
+			containerStats.FinishedAt = containerInfo.State.FinishedAt
+			containerStats.ExitCode = containerInfo.State.ExitCode
+			if containerInfo.State.Error != "" {
+				containerStats.Error = containerInfo.State.Error
+			}
 		}
 
 		stats = append(stats, containerStats)
@@ -176,8 +174,8 @@ func (dm *DockerMonitor) CheckContainerStatus() ([]types.Alert, error) {
 }
 
 // GetContainerSummary returns a summary of container status
-func (dm *DockerMonitor) GetContainerSummary(stats []types.DockerContainerStats) map[string]interface{} {
-	summary := make(map[string]interface{})
+func (dm *DockerMonitor) GetContainerSummary(stats []types.DockerContainerStats) map[string]any {
+	summary := make(map[string]any)
 
 	total := len(stats)
 	running := 0
@@ -214,7 +212,7 @@ func (dm *DockerMonitor) GetContainerSummary(stats []types.DockerContainerStats)
 // Close closes the Docker client connection
 func (dm *DockerMonitor) Close() error {
 	if dm.client != nil {
-		return dm.client.Close()
+		return fmt.Errorf("failed to close Docker client: %w", dm.client.Close())
 	}
 	return nil
 }
@@ -227,7 +225,7 @@ func getContainerName(names []string) string {
 
 	// Docker container names start with "/", remove it
 	name := names[0]
-	if len(name) > 0 && name[0] == '/' {
+	if name != "" && name[0] == '/' {
 		name = name[1:]
 	}
 	return name

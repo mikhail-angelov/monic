@@ -122,7 +122,7 @@ func (sm *StateManager) updateState(state *types.AlertState, alertType, currentS
 }
 
 // shouldSendAlert determines if an alert should be sent based on state
-func (sm *StateManager) shouldSendAlert(state *types.AlertState, now time.Time) bool {
+func (sm *StateManager) shouldSendAlert(state *types.AlertState, _ time.Time) bool {
 	// Don't send alerts for OK state
 	if state.CurrentState == "ok" {
 		// Only send recovery alert if we were previously in a bad state
@@ -168,15 +168,15 @@ func (sm *StateManager) getOrCreateState(alertType string) *types.AlertState {
 func getSystemAlertMessage(alertType string, currentValue, threshold float64) string {
 	switch alertType {
 	case "cpu":
-		return formatSystemMessage("CPU usage", currentValue, threshold, "%")
+		return formatSystemMessage("CPU usage", currentValue, threshold)
 	case "memory":
-		return formatSystemMessage("Memory usage", currentValue, threshold, "%")
+		return formatSystemMessage("Memory usage", currentValue, threshold)
 	default:
 		if len(alertType) > 5 && alertType[:5] == "disk_" {
 			path := alertType[5:]
-			return formatSystemMessage("Disk usage on "+path, currentValue, threshold, "%")
+			return formatSystemMessage("Disk usage on "+path, currentValue, threshold)
 		}
-		return formatSystemMessage(alertType, currentValue, threshold, "%")
+		return formatSystemMessage(alertType, currentValue, threshold)
 	}
 }
 
@@ -184,31 +184,31 @@ func getSystemAlertMessage(alertType string, currentValue, threshold float64) st
 func getSystemRecoveryMessage(alertType string, currentValue, threshold float64) string {
 	switch alertType {
 	case "cpu":
-		return formatRecoveryMessage("CPU usage", currentValue, threshold, "%")
+		return formatRecoveryMessage("CPU usage", currentValue, threshold)
 	case "memory":
-		return formatRecoveryMessage("Memory usage", currentValue, threshold, "%")
+		return formatRecoveryMessage("Memory usage", currentValue, threshold)
 	default:
 		if len(alertType) > 5 && alertType[:5] == "disk_" {
 			path := alertType[5:]
-			return formatRecoveryMessage("Disk usage on "+path, currentValue, threshold, "%")
+			return formatRecoveryMessage("Disk usage on "+path, currentValue, threshold)
 		}
-		return formatRecoveryMessage(alertType, currentValue, threshold, "%")
+		return formatRecoveryMessage(alertType, currentValue, threshold)
 	}
 }
 
 // formatSystemMessage formats system alert messages
-func formatSystemMessage(metric string, currentValue, threshold float64, unit string) string {
-	return metric + " is " + formatValue(currentValue, unit) + " (threshold: " + formatValue(threshold, unit) + ")"
+func formatSystemMessage(metric string, currentValue, threshold float64) string {
+	return metric + " is " + formatValue(currentValue) + " (threshold: " + formatValue(threshold) + ")"
 }
 
 // formatRecoveryMessage formats system recovery messages
-func formatRecoveryMessage(metric string, currentValue, threshold float64, unit string) string {
-	return metric + " recovered to " + formatValue(currentValue, unit) + " (threshold: " + formatValue(threshold, unit) + ")"
+func formatRecoveryMessage(metric string, currentValue, threshold float64) string {
+	return metric + " recovered to " + formatValue(currentValue) + " (threshold: " + formatValue(threshold) + ")"
 }
 
 // formatValue formats a value with unit
-func formatValue(value float64, unit string) string {
-	return formatFloat(value) + unit
+func formatValue(value float64) string {
+	return formatFloat(value) + "%"
 }
 
 // formatFloat formats a float to one decimal place
@@ -232,7 +232,7 @@ func formatFloatPrecision(value float64, precision int) string {
 	fracStr := ""
 	if precision > 0 {
 		multiplier := 1
-		for i := 0; i < precision; i++ {
+		for range precision {
 			multiplier *= 10
 		}
 		fracInt := int(fracPart*float64(multiplier) + 0.5)

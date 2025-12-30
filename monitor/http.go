@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -23,6 +24,7 @@ func NewHTTPMonitor() *HTTPMonitor {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
 			InsecureSkipVerify: false, // Verify SSL certificates
+			MinVersion:         tls.VersionTLS12,
 		},
 		MaxIdleConns:        10,
 		IdleConnTimeout:     30 * time.Second,
@@ -50,7 +52,7 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(check.Timeout)*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(check.Method), check.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, strings.ToUpper(check.Method), check.URL, http.NoBody)
 	if err != nil {
 		result.Error = fmt.Sprintf("failed to create request: %v", err)
 		result.Success = false
@@ -76,7 +78,7 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 
 	// Read a small portion of the response body to ensure connection is working
 	_, err = io.CopyN(io.Discard, resp.Body, 1024) // Read up to 1KB
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		result.Error = fmt.Sprintf("failed to read response body: %v", err)
 		result.Success = false
 		return result
@@ -97,7 +99,7 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 
 // CheckEndpoints performs checks on multiple HTTP endpoints
 func (hm *HTTPMonitor) CheckEndpoints(checks []types.HTTPCheck) []types.HTTPCheckResult {
-	var results []types.HTTPCheckResult
+	results := make([]types.HTTPCheckResult, 0, len(checks))
 
 	for _, check := range checks {
 		// Skip if it's too soon to check again
@@ -129,7 +131,7 @@ func (hm *HTTPMonitor) CheckEndpointsConcurrent(checks []types.HTTPCheck) []type
 	}
 
 	// Collect results
-	for i := 0; i < len(checks); i++ {
+	for range checks {
 		result := <-resultChan
 		results = append(results, result)
 	}
@@ -151,7 +153,7 @@ func (hm *HTTPMonitor) CheckEndpointConcurrent(check types.HTTPCheck) types.HTTP
 
 // ValidateHTTPCheck validates if an HTTP check configuration is valid
 func (hm *HTTPMonitor) ValidateHTTPCheck(check types.HTTPCheck) error {
-	
+
 	if check.URL == "" {
 		return fmt.Errorf("URL cannot be empty")
 	}
@@ -195,8 +197,8 @@ func (hm *HTTPMonitor) ValidateHTTPCheck(check types.HTTPCheck) error {
 }
 
 // GetHTTPStats returns statistics about HTTP monitoring performance
-func (hm *HTTPMonitor) GetHTTPStats(results []types.HTTPCheckResult) map[string]interface{} {
-	stats := make(map[string]interface{})
+func (hm *HTTPMonitor) GetHTTPStats(results []types.HTTPCheckResult) map[string]any {
+	stats := make(map[string]any)
 
 	if len(results) == 0 {
 		return stats
