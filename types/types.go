@@ -121,6 +121,7 @@ type AlertState struct {
 	ConsecutiveChecks int
 	LastAlertSent     time.Time
 	LastStateChange   time.Time
+	SentCriticalAlert bool // Track if we sent a critical alert for current state
 }
 
 // DockerConfig contains Docker container monitoring settings

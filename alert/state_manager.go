@@ -1,6 +1,9 @@
 package alert
 
 import (
+	"fmt"
+	"math"
+	"strings"
 	"time"
 
 	"bconf.com/monic/types"
@@ -64,7 +67,13 @@ func (sm *StateManager) UpdateHTTPState(results []types.HTTPCheckResult) []types
 			currentState = "critical"
 		}
 
-		alert := sm.updateState(httpState, stateKey, currentState, result.Error, now)
+		// Create appropriate message for HTTP alerts
+		message := result.Error
+		if currentState == "ok" && httpState.CurrentState == "critical" {
+			// This is a recovery - create recovery message
+			message = result.Name + " has recovered"
+		}
+		alert := sm.updateState(httpState, stateKey, currentState, message, now, 0, 0)
 		if alert != nil {
 			alerts = append(alerts, *alert)
 		}
@@ -81,35 +90,42 @@ func (sm *StateManager) checkSystemMetric(state *types.AlertState, alertType str
 		currentState = "critical"
 	}
 
-	message := ""
-	if currentState == "critical" {
-		message = getSystemAlertMessage(alertType, currentValue, threshold)
-	} else {
-		message = getSystemRecoveryMessage(alertType, currentValue, threshold)
-	}
-
-	return sm.updateState(state, alertType, currentState, message, now)
+	// Pass currentValue and threshold for message creation
+	return sm.updateState(state, alertType, currentState, "", now, currentValue, threshold)
 }
 
 // updateState updates the alert state and returns an alert if needed
-func (sm *StateManager) updateState(state *types.AlertState, alertType, currentState, message string, now time.Time) *types.Alert {
+func (sm *StateManager) updateState(state *types.AlertState, alertType, currentState, message string, now time.Time, currentValue, threshold float64) *types.Alert {
+	// Save previous state before updating
+	previousState := state.CurrentState
+
 	// If state changed, reset consecutive checks
 	if state.CurrentState != currentState {
 		state.CurrentState = currentState
 		state.ConsecutiveChecks = 1
 		state.LastStateChange = now
+		// Reset SentCriticalAlert when state changes (except when transitioning from critical to ok)
+		if previousState != "critical" || currentState != "ok" {
+			state.SentCriticalAlert = false
+		}
 	} else {
 		state.ConsecutiveChecks++
 	}
 
 	// Check if we should send an alert
-	if sm.shouldSendAlert(state, now) {
-		state.LastAlertSent = now
+	if !sm.shouldSendAlert(state, now) {
+		return nil
+	}
+
+	state.LastAlertSent = now
+
+	// Handle custom message (e.g., from HTTP checks)
+	if message != "" {
 		level := "warning"
 		if currentState == "critical" {
 			level = "critical"
+			state.SentCriticalAlert = true
 		}
-
 		return &types.Alert{
 			Type:      alertType,
 			Message:   message,
@@ -118,6 +134,35 @@ func (sm *StateManager) updateState(state *types.AlertState, alertType, currentS
 		}
 	}
 
+	// Handle system metric critical alert
+	if currentState == "critical" {
+		alertMessage := getSystemAlertMessage(alertType, currentValue, threshold)
+		state.SentCriticalAlert = true
+		return &types.Alert{
+			Type:      alertType,
+			Message:   alertMessage,
+			Level:     "critical",
+			Timestamp: now,
+		}
+	}
+
+	// Handle recovery alert
+	if currentState == "ok" && previousState == "critical" {
+		if !state.SentCriticalAlert {
+			// No recovery alert if we never sent a critical alert
+			return nil
+		}
+		alertMessage := getSystemRecoveryMessage(alertType, currentValue, threshold)
+		state.SentCriticalAlert = false
+		return &types.Alert{
+			Type:      alertType,
+			Message:   alertMessage,
+			Level:     "warning",
+			Timestamp: now,
+		}
+	}
+
+	// No alert needed
 	return nil
 }
 
@@ -127,7 +172,8 @@ func (sm *StateManager) shouldSendAlert(state *types.AlertState, _ time.Time) bo
 	if state.CurrentState == "ok" {
 		// Only send recovery alert if we were previously in a bad state
 		// and this is the first OK check after recovery
-		if state.ConsecutiveChecks == 1 && state.LastAlertSent.After(state.LastStateChange) {
+		// and we sent a critical alert for this state
+		if state.ConsecutiveChecks == 1 && state.LastAlertSent.Before(state.LastStateChange) && state.SentCriticalAlert {
 			return true
 		}
 		return false
@@ -159,6 +205,7 @@ func (sm *StateManager) getOrCreateState(alertType string) *types.AlertState {
 		ConsecutiveChecks: 0,
 		LastAlertSent:     time.Time{},
 		LastStateChange:   time.Now(),
+		SentCriticalAlert: false,
 	}
 	sm.states[alertType] = state
 	return state
@@ -221,25 +268,47 @@ func formatFloatPrecision(value float64, precision int) string {
 	// Simple formatting without using fmt.Sprintf
 	// This implementation handles basic cases
 	if value == 0 {
-		return "0.0"
+		if precision > 0 {
+			return "0." + strings.Repeat("0", precision)
+		}
+		return "0"
 	}
 
+	// Handle negative values
+	negative := value < 0
+	if negative {
+		value = -value
+	}
+
+	// Round the value to the specified precision
+	multiplier := 1.0
+	for range precision {
+		multiplier *= 10.0
+	}
+	rounded := math.Round(value*multiplier) / multiplier
+
 	// Handle integer part
-	intPart := int(value)
-	fracPart := value - float64(intPart)
+	intPart := int(rounded)
+	fracPart := rounded - float64(intPart)
 
 	// Handle fractional part
 	fracStr := ""
 	if precision > 0 {
-		multiplier := 1
-		for range precision {
-			multiplier *= 10
+		// Get fractional part as integer
+		fracInt := int(math.Round(fracPart * multiplier))
+		// Handle case where rounding causes carry-over to integer part
+		if fracInt >= int(multiplier) {
+			intPart++
+			fracInt = 0
 		}
-		fracInt := int(fracPart*float64(multiplier) + 0.5)
-		fracStr = "." + itoa(fracInt)
+		fracStr = "." + fmt.Sprintf("%0*d", precision, fracInt)
 	}
 
-	return itoa(intPart) + fracStr
+	result := itoa(intPart) + fracStr
+	if negative {
+		result = "-" + result
+	}
+	return result
 }
 
 // itoa converts integer to string (basic implementation)
