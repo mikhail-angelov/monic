@@ -225,7 +225,7 @@ func TestStateManager_UpdateState_RecoveryAlert(t *testing.T) {
 	if alert.Type != "cpu" {
 		t.Errorf("Expected alert type 'cpu', got %s", alert.Type)
 	}
-	if alert.Level != "warning" {
+	if alert.Level != "info" {
 		t.Errorf("Expected alert level 'warning' for recovery, got %s", alert.Level)
 	}
 	if alert.Message != "CPU usage recovered to 70.0% (threshold: 80.0%)" {

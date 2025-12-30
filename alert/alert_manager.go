@@ -283,9 +283,14 @@ func (am *Manager) sendTelegram(alert types.Alert) error {
 
 	// Build message
 	appName := am.getAppName()
-	message := fmt.Sprintf("<b>[%s Alert] %s - %s</b>\n\n", appName, strings.ToUpper(alert.Level), alert.Type)
-	message += fmt.Sprintf("Message: %s\n", alert.Message)
-	message += fmt.Sprintf("Time: %s", alert.Timestamp.Format(time.RFC1123))
+	message := ""
+	if alert.Level == "info" {
+		message += "✅"
+	} else {
+		message += "❌"
+	}
+	message += fmt.Sprintf("<b>[%s] %s - %s</b>: %s \n", appName, strings.ToUpper(alert.Level), alert.Type, alert.Message)
+	message += alert.Timestamp.Format(time.RFC1123)
 
 	// Create request URL
 	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", telegramConfig.BotToken)

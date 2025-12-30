@@ -157,7 +157,7 @@ func (sm *StateManager) updateState(state *types.AlertState, alertType, currentS
 		return &types.Alert{
 			Type:      alertType,
 			Message:   alertMessage,
-			Level:     "warning",
+			Level:     "info",
 			Timestamp: now,
 		}
 	}
