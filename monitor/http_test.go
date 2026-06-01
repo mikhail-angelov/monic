@@ -219,7 +219,10 @@ func TestHTTPMonitor_CheckEndpoints(t *testing.T) {
 		},
 	}
 
-	results := monitor.CheckEndpoints(checks)
+	results := make([]types.HTTPCheckResult, 0, len(checks))
+	for _, check := range checks {
+		results = append(results, monitor.CheckEndpoint(check))
+	}
 
 	if len(results) != 2 {
 		t.Errorf("Expected 2 results, got %d", len(results))
@@ -315,7 +318,7 @@ func TestHTTPMonitor_CheckEndpointConcurrent(t *testing.T) {
 		CheckInterval:  30,
 	}
 
-	result := monitor.CheckEndpointConcurrent(check)
+	result := monitor.CheckEndpoint(check)
 
 	if !result.Success {
 		t.Errorf("Expected successful check, got error: %s", result.Error)
