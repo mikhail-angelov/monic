@@ -53,6 +53,10 @@ func calculateEnabledStatus(config *types.Config) *types.Config {
 		config.HTTPServer.Enabled = isHTTPServerEnabled()
 	}
 
+	if !config.Digest.Enabled {
+		config.Digest.Enabled = isDigestEnabled()
+	}
+
 	return config
 }
 
@@ -93,4 +97,9 @@ func isHTTPServerEnabled() bool {
 	return os.Getenv("MONIC_HTTP_SERVER_PORT") != "" ||
 		os.Getenv("MONIC_HTTP_SERVER_USERNAME") != "" ||
 		os.Getenv("MONIC_HTTP_SERVER_PASSWORD") != ""
+}
+
+// isDigestEnabled checks if the daily digest schedule is configured.
+func isDigestEnabled() bool {
+	return os.Getenv("MONIC_DIGEST_SCHEDULE") != ""
 }

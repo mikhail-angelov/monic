@@ -13,6 +13,7 @@ type Config struct {
 	Alerting     AlertingConfig     `envconfig:"ALERTING"`
 	DockerChecks DockerConfig       `envconfig:"CHECK_DOCKER"`
 	HTTPServer   HTTPServerConfig   `envconfig:"HTTP_SERVER"`
+	Digest       DigestConfig       `envconfig:"DIGEST"`
 }
 
 // SystemChecksConfig contains system monitoring settings
@@ -152,4 +153,10 @@ type HTTPServerConfig struct {
 	Port     int    `envconfig:"PORT"`
 	Username string `envconfig:"USERNAME"`
 	Password string `envconfig:"PASSWORD"`
+}
+
+// DigestConfig contains daily digest settings
+type DigestConfig struct {
+	Enabled  bool
+	Schedule string `envconfig:"SCHEDULE"` // cron expression or "24h"; empty = no digest
 }

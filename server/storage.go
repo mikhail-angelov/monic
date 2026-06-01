@@ -14,6 +14,7 @@ type Storage interface {
 	GetAlertsCount() int
 	GetHTTPCheckResults() []types.HTTPCheckResult
 	GetAlerts() []types.Alert
+	GetSystemStats() []types.SystemStats
 
 	// Methods used by MonitorService
 	AddSystemStats(stats types.SystemStats)

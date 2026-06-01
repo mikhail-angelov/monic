@@ -1,29 +1,36 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 
 	"bconf.com/monic/alert"
+	"bconf.com/monic/discovery"
 	"bconf.com/monic/monitor"
 	"bconf.com/monic/types"
 )
 
 // MonitorService represents the main monitoring service
 type MonitorService struct {
-	config        *types.Config
-	systemMonitor *monitor.SystemMonitor
-	httpMonitor   *monitor.HTTPMonitor
-	dockerMonitor *monitor.DockerMonitor
-	alertManager  *alert.Manager
-	stateManager  *alert.StateManager
-	statsServer   *StatsServer
-	storage       Storage
-	stopChan      chan struct{}
-	wg            sync.WaitGroup
-	startTime     time.Time
+	config         *types.Config
+	systemMonitor  *monitor.SystemMonitor
+	httpMonitor    *monitor.HTTPMonitor
+	alertManager   *alert.Manager
+	stateManager   *alert.StateManager
+	statsServer    *StatsServer
+	storage        Storage
+	stopChan       chan struct{}
+	wg             sync.WaitGroup
+	startTime      time.Time
+
+	// New components
+	dockerWatcher   *discovery.Watcher
+	healthRegistry  *monitor.HealthCheckRegistry
+	containerTrack  *monitor.ContainerTracker
+	digestService   *DigestService
 }
 
 // NewMonitorService creates a new monitoring service instance with injected dependencies
@@ -31,7 +38,6 @@ func NewMonitorService(
 	config *types.Config,
 	systemMonitor *monitor.SystemMonitor,
 	httpMonitor *monitor.HTTPMonitor,
-	dockerMonitor *monitor.DockerMonitor,
 	alertManager *alert.Manager,
 	stateManager *alert.StateManager,
 	storage Storage,
@@ -41,24 +47,40 @@ func NewMonitorService(
 		config:        config,
 		systemMonitor: systemMonitor,
 		httpMonitor:   httpMonitor,
-		dockerMonitor: dockerMonitor,
 		alertManager:  alertManager,
 		stateManager:  stateManager,
 		storage:       storage,
 		statsServer:   statsServer,
 		stopChan:      make(chan struct{}),
 		startTime:     time.Now(),
+
+		containerTrack: monitor.NewContainerTracker(),
 	}
+}
+
+// SetDockerWatcher sets the Docker watcher (called after Docker client init).
+func (ms *MonitorService) SetDockerWatcher(w *discovery.Watcher) {
+	ms.dockerWatcher = w
+}
+
+// SetHealthRegistry sets the health check registry.
+func (ms *MonitorService) SetHealthRegistry(r *monitor.HealthCheckRegistry) {
+	ms.healthRegistry = r
+}
+
+// ContainerTracker returns the container tracker used by the service.
+func (ms *MonitorService) ContainerTracker() *monitor.ContainerTracker {
+	return ms.containerTrack
+}
+
+// SetDigestService sets the digest service for daily reports.
+func (ms *MonitorService) SetDigestService(ds *DigestService) {
+	ms.digestService = ds
 }
 
 // Start begins the monitoring service
 func (ms *MonitorService) Start() error {
 	slog.Info("Starting Monic monitoring service...")
-
-	// Validate HTTP checks configuration
-	if err := ms.httpMonitor.ValidateHTTPCheck(ms.config.HTTPChecks); err != nil {
-		return fmt.Errorf("invalid HTTP check configuration for %s: %w", ms.config.HTTPChecks.URL, err)
-	}
 
 	// Validate alerting configuration
 	if err := ms.alertManager.ValidateConfig(); err != nil {
@@ -74,21 +96,13 @@ func (ms *MonitorService) Start() error {
 	systemInfo := ms.systemMonitor.GetSystemInfo()
 	slog.Info("System Info", "info", systemInfo)
 
-	// Initialize Docker monitor if enabled
-	if ms.config.DockerChecks.Enabled {
-		if err := ms.dockerMonitor.Initialize(); err != nil {
-			slog.Warn("Failed to initialize Docker monitor", "error", err)
-		} else {
-			ms.wg.Add(1)
-			go ms.dockerMonitoringLoop()
-		}
-	}
-
 	// Start monitoring goroutines
-	ms.wg.Add(3)
+	ms.wg.Add(5)
 	go ms.systemMonitoringLoop()
-	go ms.httpMonitoringLoop()
+	go ms.dockerWatcherLoop()
+	go ms.healthCheckLoop()
 	go ms.alertProcessingLoop()
+	go ms.digestLoop()
 
 	slog.Info("Monic monitoring service started successfully")
 	return nil
@@ -97,6 +111,14 @@ func (ms *MonitorService) Start() error {
 // Stop gracefully stops the monitoring service
 func (ms *MonitorService) Stop() {
 	slog.Info("Stopping Monic monitoring service...")
+
+	if ms.dockerWatcher != nil {
+		ms.dockerWatcher.Stop()
+	}
+	if ms.healthRegistry != nil {
+		ms.healthRegistry.RemoveAll()
+	}
+
 	close(ms.stopChan)
 	ms.wg.Wait()
 	slog.Info("Monic monitoring service stopped")
@@ -119,50 +141,174 @@ func (ms *MonitorService) systemMonitoringLoop() {
 	}
 }
 
-// httpMonitoringLoop handles HTTP endpoint monitoring
-func (ms *MonitorService) httpMonitoringLoop() {
+// dockerWatcherLoop runs the Docker discovery watcher and processes container events.
+func (ms *MonitorService) dockerWatcherLoop() {
 	defer ms.wg.Done()
 
-	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
-	defer ticker.Stop()
+	if ms.dockerWatcher == nil {
+		slog.Warn("Docker watcher not initialized, skipping discovery")
+		return
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Process events in a goroutine
+	eventDone := make(chan struct{})
+	go func() {
+		defer close(eventDone)
+		for {
+			select {
+			case evt, ok := <-ms.dockerWatcher.Events():
+				if !ok {
+					return
+				}
+				ms.handleContainerEvent(ctx, evt)
+			case <-ms.stopChan:
+				return
+			}
+		}
+	}()
+
+	// Start the watcher (blocks until stop)
+	if err := ms.dockerWatcher.Start(ctx); err != nil {
+		if err != context.Canceled {
+			slog.Error("Docker watcher stopped unexpectedly", "error", err)
+		}
+	}
+
+	<-eventDone
+}
+
+// handleContainerEvent processes a single container discovery event.
+func (ms *MonitorService) handleContainerEvent(ctx context.Context, evt discovery.ContainerEvent) {
+	mc := evt.Container
+
+	switch evt.Type {
+	case discovery.EventAdded:
+		// Start tracking
+		alerts := ms.containerTrack.UpdateFromEvent(mc.ID, mc.Name, mc.CustomName, mc.Running, mc.CheckType)
+		ms.processAlertsIfAny(alerts)
+
+		// Start health checks if needed
+		if ms.healthRegistry != nil {
+			ms.healthRegistry.Add(ctx, mc)
+		}
+
+	case discovery.EventUpdated:
+		// Update tracking
+		alerts := ms.containerTrack.UpdateFromEvent(mc.ID, mc.Name, mc.CustomName, mc.Running, mc.CheckType)
+		ms.processAlertsIfAny(alerts)
+
+		// Restart health check if parameters changed
+		if ms.healthRegistry != nil && mc.CheckType == types.CheckTypeHTTP {
+			ms.healthRegistry.Remove(mc.ID)
+			ms.healthRegistry.Add(ctx, mc)
+		}
+
+	case discovery.EventRemoved:
+		// Stop tracking
+		alerts := ms.containerTrack.Remove(mc.ID)
+		ms.processAlertsIfAny(alerts)
+
+		// Stop health checks
+		if ms.healthRegistry != nil {
+			ms.healthRegistry.Remove(mc.ID)
+		}
+	}
+}
+
+// healthCheckLoop processes HTTP health check results from the registry.
+func (ms *MonitorService) healthCheckLoop() {
+	defer ms.wg.Done()
+
+	if ms.healthRegistry == nil {
+		slog.Debug("Health check registry not initialized, skipping")
+		return
+	}
 
 	for {
 		select {
 		case <-ms.stopChan:
 			return
-		case <-ticker.C:
-			ms.collectHTTPStats()
+
+		case result := <-ms.healthRegistry.Results():
+			// Store result
+			ms.storage.AddHTTPCheckResult(result)
+
+			// Generate alerts using state manager
+			alerts := ms.stateManager.UpdateHTTPState([]types.HTTPCheckResult{result})
+			ms.processAlertsIfAny(alerts)
+
+			// Log
+			status := "success"
+			if !result.Success {
+				status = "failed"
+			}
+			slog.Debug("Health check result",
+				"name", result.Name,
+				"url", result.URL,
+				"status", status,
+				"code", result.StatusCode,
+				"time_ms", result.ResponseTime.Milliseconds())
 		}
 	}
 }
 
-// dockerMonitoringLoop handles Docker container monitoring
-func (ms *MonitorService) dockerMonitoringLoop() {
-	defer ms.wg.Done()
-
-	interval := ms.config.DockerChecks.CheckInterval
-	if interval == 0 {
-		interval = 60 // Default to 60 seconds
-	}
-
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ms.stopChan:
-			return
-		case <-ticker.C:
-			ms.collectDockerStats()
-		}
-	}
-}
-
-// alertProcessingLoop handles alert processing and reporting
+// alertProcessingLoop periodically processes and sends stored alerts.
+// This runs independently of Docker/health check status so system alerts always get dispatched.
 func (ms *MonitorService) alertProcessingLoop() {
 	defer ms.wg.Done()
 
-	ticker := time.NewTicker(60 * time.Second) // Process alerts every minute
+	alertTicker := time.NewTicker(60 * time.Second)
+	defer alertTicker.Stop()
+
+	for {
+		select {
+		case <-ms.stopChan:
+			return
+		case <-alertTicker.C:
+			ms.processAlerts()
+		}
+	}
+}
+
+// digestLoop sends a daily digest on the configured schedule.
+// The schedule is parsed as a Go duration (e.g. "24h"). If the digest service is
+// not set or no schedule is configured, this loop returns immediately.
+func (ms *MonitorService) digestLoop() {
+	defer ms.wg.Done()
+
+	if ms.digestService == nil {
+		return
+	}
+
+	schedule := ms.config.Digest.Schedule
+	if schedule == "" {
+		return
+	}
+
+	interval, err := time.ParseDuration(schedule)
+	if err != nil {
+		slog.Warn("Invalid digest schedule, disabling digest", "schedule", schedule, "error", err)
+		return
+	}
+
+	if interval <= 0 {
+		slog.Warn("Digest schedule must be positive, disabling", "schedule", schedule)
+		return
+	}
+
+	slog.Info("Daily digest scheduled", "interval", interval.String())
+
+	// Wait the full interval before first digest so the system has data
+	select {
+	case <-ms.stopChan:
+		return
+	case <-time.After(interval):
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -170,8 +316,23 @@ func (ms *MonitorService) alertProcessingLoop() {
 		case <-ms.stopChan:
 			return
 		case <-ticker.C:
-			ms.processAlerts()
+			ms.sendDigest()
 		}
+	}
+}
+
+// sendDigest builds and dispatches the daily digest via alert manager.
+func (ms *MonitorService) sendDigest() {
+	slog.Info("Building daily digest...")
+
+	digestText := ms.digestService.BuildDigest()
+	if digestText == "" {
+		slog.Warn("Digest text is empty, skipping")
+		return
+	}
+
+	if err := ms.alertManager.SendDigest(digestText); err != nil {
+		slog.Error("Failed to send daily digest", "error", err)
 	}
 }
 
@@ -183,94 +344,39 @@ func (ms *MonitorService) collectSystemStats() {
 		return
 	}
 
-	// Add to history (keep last 100 entries)
 	ms.storage.AddSystemStats(*stats)
 
-	// Use state manager to generate alerts with 3 consecutive failures logic
 	alerts := ms.stateManager.UpdateSystemState(stats, &ms.config.SystemChecks)
-	if len(alerts) > 0 {
-		ms.storage.AddAlerts(alerts)
-		slog.Info("System alerts generated", "count", len(alerts))
-	}
+	ms.processAlertsIfAny(alerts)
 
-	// Log current stats (in production, this would go to a proper logging system)
 	slog.Info("System Stats",
 		"cpu", fmt.Sprintf("%.2f%%", stats.CPUUsage),
 		"memory", fmt.Sprintf("%.2f%%", stats.MemoryUsage.UsedPercent),
 		"disk", ms.getDiskUsageSummary(stats.DiskUsage))
 }
 
-// collectHTTPStats collects and processes HTTP monitoring statistics
-func (ms *MonitorService) collectHTTPStats() {
-	result := ms.httpMonitor.CheckEndpointConcurrent(ms.config.HTTPChecks)
-	results := []types.HTTPCheckResult{result}
-
-	// Add to history (keep last 100 entries)
-	ms.storage.AddHTTPCheckResult(result)
-
-	// Use state manager to generate alerts with 3 consecutive failures logic
-	alerts := ms.stateManager.UpdateHTTPState(results)
-	if len(alerts) > 0 {
-		ms.storage.AddAlerts(alerts)
-		slog.Info("HTTP alerts generated", "count", len(alerts))
-	}
-
-	// Log HTTP stats
-	httpStats := ms.httpMonitor.GetHTTPStats(results)
-	slog.Info("HTTP Stats",
-		"total", httpStats["total_checks"],
-		"success", httpStats["successful_checks"],
-		"failed", httpStats["failed_checks"],
-		"rate", fmt.Sprintf("%.1f%%", httpStats["success_rate"]))
-}
-
-// collectDockerStats collects and processes Docker container statistics
-func (ms *MonitorService) collectDockerStats() {
-	stats, err := ms.dockerMonitor.CheckContainers()
-	if err != nil {
-		slog.Error("Error collecting Docker stats", "error", err)
+// processAlertsIfAny is a helper to store and log alerts inline.
+func (ms *MonitorService) processAlertsIfAny(alerts []types.Alert) {
+	if len(alerts) == 0 {
 		return
 	}
-
-	// Add to history (keep last 100 entries)
-	ms.storage.AddDockerContainerStats(stats)
-
-	// Check for container status alerts
-	alerts, err := ms.dockerMonitor.CheckContainerStatus()
-	if err != nil {
-		slog.Error("Error checking Docker container status", "error", err)
-	} else if len(alerts) > 0 {
-		ms.storage.AddAlerts(alerts)
-		slog.Info("Docker alerts generated", "count", len(alerts))
+	ms.storage.AddAlerts(alerts)
+	for _, a := range alerts {
+		slog.Info("ALERT", "level", a.Level, "type", a.Type, "message", a.Message)
 	}
-
-	// Log Docker stats
-	summary := ms.dockerMonitor.GetContainerSummary(stats)
-	slog.Info("Docker Stats",
-		"total", summary["total_containers"],
-		"running", summary["running_containers"],
-		"stopped", summary["stopped_containers"],
-		"percentage", fmt.Sprintf("%.1f%%", summary["running_percentage"]))
 }
 
-// processAlerts processes and reports alerts
+// processAlerts sends collected alerts through the alerting channels.
 func (ms *MonitorService) processAlerts() {
 	alerts := ms.storage.GetAlerts()
 	if len(alerts) == 0 {
 		return
 	}
 
-	// Log alerts to console
-	for _, alert := range alerts {
-		slog.Info("ALERT", "level", alert.Level, "type", alert.Type, "message", alert.Message)
-	}
-
-	// Send alerts via configured channels (email, Mailgun, etc.)
 	if err := ms.alertManager.SendAlerts(alerts); err != nil {
 		slog.Error("Failed to send some alerts", "error", err)
 	}
 
-	// Clear processed alerts
 	ms.storage.ClearAlerts()
 }
 
