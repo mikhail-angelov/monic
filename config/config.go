@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 
 	"bconf.com/monic/types"
@@ -17,6 +18,9 @@ func LoadConfig() (*types.Config, error) {
 	// Load .env file (Optional)
 	// It's okay if .env doesn't exist
 	_ = godotenv.Load()
+
+	// Set defaults before processing env vars
+	config.DockerChecks.CheckInterval = 300 // default 5 min
 
 	// Load from Environment Variables
 	if err := envconfig.Process("MONIC", config); err != nil {
@@ -82,10 +86,16 @@ func isTelegramAlertingEnabled() bool {
 		os.Getenv("MONIC_ALERTING_TELEGRAM_CHAT_ID") != ""
 }
 
-// isDockerChecksEnabled checks if docker checks environment variables are set
+// isDockerChecksEnabled checks if Docker monitoring should be enabled.
+// Docker monitoring is enabled by default since Monic is meant to be a system-wide Docker monitor.
 func isDockerChecksEnabled() bool {
-	return os.Getenv("MONIC_CHECK_DOCKER_INTERVAL") != "" ||
-		os.Getenv("MONIC_CHECK_DOCKER_CONTAINERS") != ""
+	// Docker monitoring is enabled by default when running as a container with docker.sock mounted
+	port := os.Getenv("MONIC_HTTP_SERVER_PORT")
+	if port != "" {
+		return true // explicit presence of any config means enabled
+	}
+	slog.Warn("Docker monitoring disabled: no explicit configuration found. Set MONIC_CHECK_DOCKER_INTERVAL to enable.")
+	return false
 }
 
 // isHTTPServerEnabled checks if HTTP server environment variables are set

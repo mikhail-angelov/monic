@@ -1,14 +1,17 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"bconf.com/monic/alert"
 	"bconf.com/monic/config"
+	"bconf.com/monic/discovery"
 	"bconf.com/monic/monitor"
 	"bconf.com/monic/server"
 )
@@ -37,7 +40,6 @@ func main() {
 	// Create all dependencies
 	systemMonitor := monitor.NewSystemMonitor(&cfg.SystemChecks)
 	httpMonitor := monitor.NewHTTPMonitor()
-	dockerMonitor := monitor.NewDockerMonitor(&cfg.DockerChecks)
 	alertManager := alert.NewManager(&cfg.Alerting, cfg.AppName)
 	stateManager := alert.NewStateManager()
 	storage := server.NewStorageManager(100)
@@ -54,12 +56,36 @@ func main() {
 		cfg,
 		systemMonitor,
 		httpMonitor,
-		dockerMonitor,
 		alertManager,
 		stateManager,
 		storage,
 		statsServer,
 	)
+
+	// Initialize Docker discovery if enabled
+	if cfg.DockerChecks.Enabled {
+		dockerClient, err := discovery.InitDockerClient()
+		if err != nil {
+			slog.Warn("Failed to initialize Docker client", "error", err)
+		} else {
+			interval := time.Duration(cfg.DockerChecks.CheckInterval) * time.Second
+			watcher := discovery.NewWatcher(dockerClient, interval)
+
+			// Exclude the Monic container itself
+			monicID := os.Getenv("MONIC_CONTAINER_ID")
+			if monicID != "" {
+				watcher.ExcludeContainer(monicID)
+			}
+
+			healthRegistry := monitor.NewHealthCheckRegistry(httpMonitor)
+
+			service.SetDockerWatcher(watcher)
+			service.SetHealthRegistry(healthRegistry)
+			statsServer.SetContainerTracker(monitor.NewContainerTracker())
+		}
+	} else {
+		slog.Warn("Docker monitoring disabled")
+	}
 
 	if err := service.Start(); err != nil {
 		slog.Error("Failed to start monitoring service", "error", err)
@@ -69,6 +95,8 @@ func main() {
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// prevent unused variable
+	_ = context.Background()
 
 	<-sigChan
 	service.Stop()

@@ -6,12 +6,139 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"bconf.com/monic/types"
 )
+
+// HealthCheckRegistry manages per-container health check goroutines.
+// Each container with monic.check=http gets its own goroutine that periodically
+// pings the configured URL.
+type HealthCheckRegistry struct {
+	httpMon    *HTTPMonitor
+	results    chan types.HTTPCheckResult
+	containers map[string]context.CancelFunc // containerID -> cancel
+
+	mu sync.RWMutex
+}
+
+// NewHealthCheckRegistry creates a new health check registry.
+func NewHealthCheckRegistry(httpMon *HTTPMonitor) *HealthCheckRegistry {
+	return &HealthCheckRegistry{
+		httpMon:    httpMon,
+		results:    make(chan types.HTTPCheckResult, 128),
+		containers: make(map[string]context.CancelFunc),
+	}
+}
+
+// Results returns a channel of HTTP check results.
+func (r *HealthCheckRegistry) Results() <-chan types.HTTPCheckResult {
+	return r.results
+}
+
+// Add starts health checks for a monitored container.
+// If the container only has status monitoring (check=container), no goroutine is started.
+func (r *HealthCheckRegistry) Add(ctx context.Context, mc types.MonitoredContainer) {
+	if mc.CheckType != types.CheckTypeHTTP || mc.CheckHTTPURL == "" {
+		slog.Debug("No HTTP health check needed for container",
+			"name", mc.Name, "check_type", mc.CheckType)
+		return
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	// Stop existing check if somehow already running
+	if cancel, exists := r.containers[mc.ID]; exists {
+		cancel()
+	}
+
+	checkCtx, cancel := context.WithCancel(ctx)
+	r.containers[mc.ID] = cancel
+
+	target := types.HTTPCheckTarget{
+		ContainerID:   mc.ID,
+		Name:          mc.CustomName,
+		URL:           mc.CheckHTTPURL,
+		Method:        "GET",
+		Timeout:       mc.CheckHTTPTimeout,
+		ExpectedCode:  mc.CheckHTTPExpectedCode,
+		CheckInterval: mc.CheckHTTPInterval,
+	}
+
+	interval := time.Duration(target.CheckInterval) * time.Second
+
+	go r.runHealthCheck(checkCtx, target, interval)
+
+	slog.Info("Started HTTP health check for container",
+		"name", target.Name, "url", target.URL, "interval", interval)
+}
+
+// Remove stops health checks for a container.
+func (r *HealthCheckRegistry) Remove(containerID string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if cancel, exists := r.containers[containerID]; exists {
+		cancel()
+		delete(r.containers, containerID)
+		slog.Debug("Stopped health check for container", "id", containerID[:12])
+	}
+}
+
+// RemoveAll stops all health checks.
+func (r *HealthCheckRegistry) RemoveAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, cancel := range r.containers {
+		cancel()
+		delete(r.containers, id)
+	}
+}
+
+// runHealthCheck periodically performs an HTTP health check for a target.
+func (r *HealthCheckRegistry) runHealthCheck(ctx context.Context, target types.HTTPCheckTarget, interval time.Duration) {
+	// Do an immediate first check
+	r.doCheck(target)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			r.doCheck(target)
+		}
+	}
+}
+
+// doCheck performs a single HTTP health check and sends the result to the channel.
+func (r *HealthCheckRegistry) doCheck(target types.HTTPCheckTarget) {
+	check := types.HTTPCheck{
+		URL:            target.URL,
+		Method:         target.Method,
+		Timeout:        target.Timeout,
+		ExpectedStatus: target.ExpectedCode,
+		CheckInterval:  target.CheckInterval,
+	}
+
+	result := r.httpMon.CheckEndpoint(check)
+	result.Name = target.Name
+
+	select {
+	case r.results <- result:
+	default:
+		slog.Warn("Health check result channel full, dropping result",
+			"name", target.Name)
+	}
+}
 
 // HTTPMonitor handles HTTP/HTTPS endpoint monitoring
 type HTTPMonitor struct {
@@ -20,10 +147,9 @@ type HTTPMonitor struct {
 
 // NewHTTPMonitor creates a new HTTP monitor instance
 func NewHTTPMonitor() *HTTPMonitor {
-	// Create a custom HTTP client with timeouts and TLS configuration
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: false, // Verify SSL certificates
+			InsecureSkipVerify: false,
 			MinVersion:         tls.VersionTLS12,
 		},
 		MaxIdleConns:        10,
@@ -33,7 +159,7 @@ func NewHTTPMonitor() *HTTPMonitor {
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   30 * time.Second, // Default timeout
+		Timeout:   30 * time.Second,
 	}
 
 	return &HTTPMonitor{
@@ -41,14 +167,13 @@ func NewHTTPMonitor() *HTTPMonitor {
 	}
 }
 
-// CheckEndpoint performs a single HTTP/HTTPS check
+// CheckEndpoint performs a single HTTP/HTTPS health check.
 func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResult {
 	result := types.HTTPCheckResult{
 		URL:       check.URL,
 		Timestamp: time.Now(),
 	}
 
-	// Create request with context timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(check.Timeout)*time.Second)
 	defer cancel()
 
@@ -59,7 +184,6 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 		return result
 	}
 
-	// Set common headers
 	req.Header.Set("User-Agent", "Monic-Monitor/1.0")
 	req.Header.Set("Accept", "*/*")
 
@@ -76,8 +200,7 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 	}
 	defer resp.Body.Close()
 
-	// Read a small portion of the response body to ensure connection is working
-	_, err = io.CopyN(io.Discard, resp.Body, 1024) // Read up to 1KB
+	_, err = io.CopyN(io.Discard, resp.Body, 1024)
 	if err != nil && !errors.Is(err, io.EOF) {
 		result.Error = fmt.Sprintf("failed to read response body: %v", err)
 		result.Success = false
@@ -86,7 +209,6 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 
 	result.StatusCode = resp.StatusCode
 
-	// Check if status code matches expected
 	if resp.StatusCode == check.ExpectedStatus {
 		result.Success = true
 	} else {
@@ -97,63 +219,8 @@ func (hm *HTTPMonitor) CheckEndpoint(check types.HTTPCheck) types.HTTPCheckResul
 	return result
 }
 
-// CheckEndpoints performs checks on multiple HTTP endpoints
-func (hm *HTTPMonitor) CheckEndpoints(checks []types.HTTPCheck) []types.HTTPCheckResult {
-	results := make([]types.HTTPCheckResult, 0, len(checks))
-
-	for _, check := range checks {
-		// Skip if it's too soon to check again
-		if !check.LastCheck.IsZero() {
-			timeSinceLastCheck := time.Since(check.LastCheck)
-			if timeSinceLastCheck < time.Duration(check.CheckInterval)*time.Second {
-				continue
-			}
-		}
-
-		result := hm.CheckEndpoint(check)
-		results = append(results, result)
-	}
-
-	return results
-}
-
-// CheckEndpointsConcurrent performs HTTP checks concurrently for better performance
-func (hm *HTTPMonitor) CheckEndpointsConcurrent(checks []types.HTTPCheck) []types.HTTPCheckResult {
-	results := make([]types.HTTPCheckResult, 0, len(checks))
-	resultChan := make(chan types.HTTPCheckResult, len(checks))
-
-	// Launch goroutines for each check
-	for _, check := range checks {
-		go func(c types.HTTPCheck) {
-			result := hm.CheckEndpoint(c)
-			resultChan <- result
-		}(check)
-	}
-
-	// Collect results
-	for range checks {
-		result := <-resultChan
-		results = append(results, result)
-	}
-
-	return results
-}
-
-// CheckEndpointConcurrent performs a single HTTP check concurrently
-func (hm *HTTPMonitor) CheckEndpointConcurrent(check types.HTTPCheck) types.HTTPCheckResult {
-	resultChan := make(chan types.HTTPCheckResult, 1)
-
-	go func(c types.HTTPCheck) {
-		result := hm.CheckEndpoint(c)
-		resultChan <- result
-	}(check)
-
-	return <-resultChan
-}
-
 // ValidateHTTPCheck validates if an HTTP check configuration is valid
 func (hm *HTTPMonitor) ValidateHTTPCheck(check types.HTTPCheck) error {
-
 	if check.URL == "" {
 		return fmt.Errorf("URL cannot be empty")
 	}

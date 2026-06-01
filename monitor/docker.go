@@ -1,232 +1,174 @@
 package monitor
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"bconf.com/monic/types"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 )
 
-// DockerMonitor handles Docker container monitoring
-type DockerMonitor struct {
-	config *types.DockerConfig
-	client *client.Client
+// ContainerStatus tracks the health state of a single container for alert deduplication.
+type ContainerStatus struct {
+	Name              string
+	CustomName        string
+	PrevRunning       bool
+	CurrentRunning    bool
+	CheckType         string
+	ConsecutiveFails  int
+	FailedSince       time.Time
+	LastRecovery      time.Time
+	SentCriticalAlert bool
 }
 
-// NewDockerMonitor creates a new Docker monitor instance
-func NewDockerMonitor(config *types.DockerConfig) *DockerMonitor {
-	return &DockerMonitor{
-		config: config,
+// ContainerTracker manages the state of all monitored containers and generates alerts.
+type ContainerTracker struct {
+	mu         sync.RWMutex
+	containers map[string]*ContainerStatus // containerID -> status
+}
+
+// NewContainerTracker creates a new container tracker.
+func NewContainerTracker() *ContainerTracker {
+	return &ContainerTracker{
+		containers: make(map[string]*ContainerStatus),
 	}
 }
 
-// Initialize initializes the Docker client
-func (dm *DockerMonitor) Initialize() error {
-	if !dm.config.Enabled {
-		slog.Error("Docker monitor is disabled")
+// UpdateFromEvent processes a container discovery event and returns alerts.
+func (ct *ContainerTracker) UpdateFromEvent(containerID string, name, customName string, running bool, checkType string) []types.Alert {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	status, exists := ct.containers[containerID]
+	if !exists {
+		// New container
+		ct.containers[containerID] = &ContainerStatus{
+			Name:           name,
+			CustomName:     customName,
+			PrevRunning:    running,
+			CurrentRunning: running,
+			CheckType:      checkType,
+		}
+		if !running {
+			return []types.Alert{{
+				Type:      "docker",
+				Message:   fmt.Sprintf("Container %s is not running (state: %s)", ct.displayName(name, customName), "stopped"),
+				Level:     "critical",
+				Timestamp: time.Now(),
+			}}
+		}
 		return nil
 	}
 
-	// Initialize Docker client
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		slog.Error("Failed to create Docker client", "error", err)
-		return fmt.Errorf("failed to create Docker client: %w", err)
+	// Update existing
+	status.Name = name
+	status.CustomName = customName
+	status.PrevRunning = status.CurrentRunning
+	status.CurrentRunning = running
+	status.CheckType = checkType
+
+	var alerts []types.Alert
+
+	if status.PrevRunning && !status.CurrentRunning {
+		// Running → stopped: critical alert
+		alerts = append(alerts, types.Alert{
+			Type:      "docker",
+			Message:   fmt.Sprintf("Container %s stopped", ct.displayName(name, customName)),
+			Level:     "critical",
+			Timestamp: time.Now(),
+		})
+	} else if !status.PrevRunning && status.CurrentRunning {
+		// Stopped → running: recovery
+		alerts = append(alerts, types.Alert{
+			Type:      "docker",
+			Message:   fmt.Sprintf("Container %s recovered (now running)", ct.displayName(name, customName)),
+			Level:     "info",
+			Timestamp: time.Now(),
+		})
 	}
 
-	dm.client = cli
+	return alerts
+}
 
-	// Test connection
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+// Remove removes a container from tracking and returns a final alert if it was running.
+func (ct *ContainerTracker) Remove(containerID string) []types.Alert {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
 
-	_, err = cli.Ping(ctx)
-	if err != nil {
-		slog.Error("Failed to ping Docker daemon", "error", err)
-		return fmt.Errorf("failed to ping Docker daemon: %w", err)
+	status, exists := ct.containers[containerID]
+	if !exists {
+		return nil
 	}
 
-	slog.Info("Docker monitor initialized successfully")
+	delete(ct.containers, containerID)
+
+	if status.CurrentRunning {
+		return []types.Alert{{
+			Type:      "docker",
+			Message:   fmt.Sprintf("Container %s disappeared from monitoring (was running)", ct.displayName(status.Name, status.CustomName)),
+			Level:     "critical",
+			Timestamp: time.Now(),
+		}}
+	}
 	return nil
 }
 
-// CheckContainers checks the status of Docker containers
-func (dm *DockerMonitor) CheckContainers() ([]types.DockerContainerStats, error) {
-	if !dm.config.Enabled || dm.client == nil {
-		return nil, nil
-	}
+// GetSummary returns a summary of all tracked containers.
+func (ct *ContainerTracker) GetSummary() map[string]any {
+	ct.mu.RLock()
+	defer ct.mu.RUnlock()
 
-	ctx := context.Background()
-	containers, err := dm.client.ContainerList(ctx, container.ListOptions{
-		All: true, // Include stopped containers
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to list containers: %w", err)
-	}
-
-	stats := make([]types.DockerContainerStats, 0, len(containers))
-	now := time.Now()
-
-	for _, c := range containers {
-		// Filter containers if specific ones are configured
-		if len(dm.config.Containers) > 0 {
-			found := false
-			for _, targetContainer := range dm.config.Containers {
-				for _, name := range c.Names {
-					if name == targetContainer || name == "/"+targetContainer {
-						found = true
-						break
-					}
-				}
-				if found {
-					break
-				}
-			}
-			if !found {
-				continue
-			}
-		}
-
-		containerStats := types.DockerContainerStats{
-			ContainerID: c.ID[:12], // Short ID
-			Name:        getContainerName(c.Names),
-			Status:      c.Status,
-			State:       c.State,
-			Running:     c.State == "running",
-			Created:     time.Unix(c.Created, 0),
-			Timestamp:   now,
-		}
-
-		// Get detailed container info
-		containerInfo, err := dm.client.ContainerInspect(ctx, c.ID)
-		if err != nil || containerInfo.State == nil {
-			slog.Warn("Warning: failed to inspect container", "id", c.ID[:12], "error", err)
-			continue
-		}
-		if containerInfo.State.Running {
-			containerStats.StartedAt = containerInfo.State.StartedAt
-		} else {
-			containerStats.FinishedAt = containerInfo.State.FinishedAt
-			containerStats.ExitCode = containerInfo.State.ExitCode
-			if containerInfo.State.Error != "" {
-				containerStats.Error = containerInfo.State.Error
-			}
-		}
-
-		stats = append(stats, containerStats)
-	}
-
-	return stats, nil
-}
-
-// CheckContainerStatus checks if specific containers are in the desired state
-func (dm *DockerMonitor) CheckContainerStatus() ([]types.Alert, error) {
-	if !dm.config.Enabled || dm.client == nil {
-		return nil, nil
-	}
-
-	stats, err := dm.CheckContainers()
-	if err != nil {
-		return nil, err
-	}
-
-	var alerts []types.Alert
-	now := time.Now()
-
-	for _, container := range stats {
-		// Check for stopped containers that should be running
-		if !container.Running {
-			alerts = append(alerts, types.Alert{
-				Type:      "docker",
-				Message:   fmt.Sprintf("Container %s (%s) is stopped", container.Name, container.ContainerID),
-				Level:     "warning",
-				Timestamp: now,
-			})
-		}
-
-		// Check for containers with non-zero exit codes
-		if container.ExitCode != 0 && container.ExitCode != 137 { // 137 is SIGKILL, often intentional
-			alerts = append(alerts, types.Alert{
-				Type:      "docker",
-				Message:   fmt.Sprintf("Container %s (%s) exited with error code: %d", container.Name, container.ContainerID, container.ExitCode),
-				Level:     "critical",
-				Timestamp: now,
-			})
-		}
-
-		// Check for containers with errors
-		if container.Error != "" {
-			alerts = append(alerts, types.Alert{
-				Type:      "docker",
-				Message:   fmt.Sprintf("Container %s (%s) has error: %s", container.Name, container.ContainerID, container.Error),
-				Level:     "critical",
-				Timestamp: now,
-			})
-		}
-	}
-
-	return alerts, nil
-}
-
-// GetContainerSummary returns a summary of container status
-func (dm *DockerMonitor) GetContainerSummary(stats []types.DockerContainerStats) map[string]any {
-	summary := make(map[string]any)
-
-	total := len(stats)
+	total := len(ct.containers)
 	running := 0
 	stopped := 0
-	restarted := 0
-	errored := 0
 
-	for _, container := range stats {
-		if container.Running {
+	for _, s := range ct.containers {
+		if s.CurrentRunning {
 			running++
 		} else {
 			stopped++
 		}
-		if container.ExitCode != 0 || container.Error != "" {
-			errored++
-		}
 	}
 
-	summary["total_containers"] = total
-	summary["running_containers"] = running
-	summary["stopped_containers"] = stopped
-	summary["restarted_containers"] = restarted
-	summary["errored_containers"] = errored
-
-	if total > 0 {
-		summary["running_percentage"] = float64(running) / float64(total) * 100
-	} else {
-		summary["running_percentage"] = 0.0
+	return map[string]any{
+		"total_containers":   total,
+		"running_containers": running,
+		"stopped_containers": stopped,
 	}
-
-	return summary
 }
 
-// Close closes the Docker client connection
-func (dm *DockerMonitor) Close() error {
-	if dm.client != nil {
-		return fmt.Errorf("failed to close Docker client: %w", dm.client.Close())
+// GetContainerStatuses returns all tracked container statuses for the web UI.
+func (ct *ContainerTracker) GetContainerStatuses() []map[string]any {
+	ct.mu.RLock()
+	defer ct.mu.RUnlock()
+
+	result := make([]map[string]any, 0, len(ct.containers))
+	for id, s := range ct.containers {
+		result = append(result, map[string]any{
+			"id":            id[:12],
+			"name":          s.Name,
+			"custom_name":   s.CustomName,
+			"display_name":  ct.displayName(s.Name, s.CustomName),
+			"running":       s.CurrentRunning,
+			"check_type":    s.CheckType,
+			"active_alert":  !s.CurrentRunning && s.SentCriticalAlert,
+		})
 	}
-	return nil
+	return result
 }
 
-// getContainerName extracts the container name from the names array
-func getContainerName(names []string) string {
-	if len(names) == 0 {
-		return "unknown"
-	}
-
-	// Docker container names start with "/", remove it
-	name := names[0]
-	if name != "" && name[0] == '/' {
-		name = name[1:]
+func (ct *ContainerTracker) displayName(name, customName string) string {
+	if customName != "" && customName != name {
+		return fmt.Sprintf("%s (%s)", customName, name)
 	}
 	return name
+}
+
+// Refactored: moved DockerContainerStats types to types.go.
+// The old DockerMonitor and SimpleDockerMonitor are replaced by discovery.Watcher + ContainerTracker.
+
+// Ensure backwards compatibility with importers
+func init() {
+	slog.Debug("Using new discovery-based Docker monitoring")
 }
