@@ -1,232 +1,50 @@
-# Makefile for Monic monitoring service
-
-# Variables
 APP_NAME := monic
 VERSION ?= dev
-GO_VERSION := $(shell go version | awk '{print $$3}')
-BUILD_TIME := $(shell date -u '+%Y-%m-%d_%H:%M:%S')
-GIT_COMMIT := $(shell git rev-parse --short HEAD)
-GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
-# Build flags
-LDFLAGS := -X main.version=$(VERSION)
+HOST := $(shell grep '^HOST=' .env | cut -d '=' -f 2)
 
-# Default target
-.DEFAULT_GOAL := help
-
-.PHONY: help
-help: ## Display this help message
-	@echo "Monic Monitoring Service - Available targets:"
-	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
-
+# Build and test
 .PHONY: build
-build: ## Build the application using vendored dependencies
-	@echo "Building $(APP_NAME) using vendored dependencies..."
-	@go build -mod=vendor -ldflags="$(LDFLAGS)" -o $(APP_NAME) main.go
-	@echo "Build complete: ./$(APP_NAME)"
-
-.PHONY: build-linux
-build-linux: ## Build for Linux using vendored dependencies
-	@echo "Building $(APP_NAME) for Linux using vendored dependencies..."
-	@GOOS=linux GOARCH=amd64 go build -mod=vendor -ldflags="$(LDFLAGS)" -o $(APP_NAME)-linux main.go
-	@echo "Build complete: ./$(APP_NAME)-linux"
+build:
+	@echo "Building $(APP_NAME)..."
+	@go build -mod=vendor -ldflags="-X main.version=$(VERSION)" -o $(APP_NAME) main.go
 
 .PHONY: test
-test: ## Run all tests
+test:
 	@echo "Running tests..."
 	@go test -v ./...
 
-.PHONY: test-coverage
-test-coverage: ## Run tests with coverage
-	@echo "Running tests with coverage..."
-	@go test -coverprofile=coverage.out ./...
-	@go tool cover -html=coverage.out -o coverage.html
-	@echo "Coverage report: coverage.html"
-
-.PHONY: clean
-clean: ## Clean build artifacts
-	@echo "Cleaning build artifacts..."
-	@rm -f $(APP_NAME) $(APP_NAME)-linux coverage.out coverage.html
-	@echo "Clean complete"
-
 .PHONY: docker-build
-docker-build: ## Build Docker image
+docker-build:
 	@echo "Building Docker image..."
 	@docker build -t $(APP_NAME):latest .
 
-.PHONY: docker-run
-docker-run: ## Run Docker container
-	@echo "Running Docker container..."
-	@docker run -d \
-		--name $(APP_NAME) \
-		--privileged \
-		--network host \
-		-v /:/host:ro \
-		-v /var/run/docker.sock:/var/run/docker.sock:ro \
-		$(APP_NAME):latest
+# Install — copy configs to remote host
+.PHONY: install
+install:
+	@echo "Installing $(APP_NAME) on $(HOST)..."
+	-ssh root@$(HOST) "mkdir -p /opt/$(APP_NAME)"
+	scp ./.env root@$(HOST):/opt/$(APP_NAME)/.env
+	scp ./docker-compose.yml root@$(HOST):/opt/$(APP_NAME)/docker-compose.yml
+	@echo "Install complete. Run 'make deploy' to start."
 
-.PHONY: docker-stop
-docker-stop: ## Stop Docker container
-	@echo "Stopping Docker container..."
-	@docker stop $(APP_NAME) || true
-	@docker rm $(APP_NAME) || true
+# Deploy — pull latest image and restart
+.PHONY: deploy
+deploy:
+	@echo "Deploying $(APP_NAME) to $(HOST)..."
+	ssh root@$(HOST) "docker pull ghcr.io/mikhail-angelov/$(APP_NAME):latest"
+	-ssh root@$(HOST) "cd /opt/$(APP_NAME) && docker compose down"
+	ssh root@$(HOST) "cd /opt/$(APP_NAME) && docker compose up -d"
+	@echo "Deploy complete."
 
-.PHONY: docker-logs
-docker-logs: ## Show Docker container logs
-	@docker logs -f $(APP_NAME)
-
-.PHONY: release-patch
-release-patch: ## Create a patch release (v1.0.0 -> v1.0.1)
-	@$(MAKE) release TYPE=patch
-
-.PHONY: release-minor
-release-minor: ## Create a minor release (v1.0.0 -> v1.1.0)
-	@$(MAKE) release TYPE=minor
-
-.PHONY: release-major
-release-major: ## Create a major release (v1.0.0 -> v2.0.0)
-	@$(MAKE) release TYPE=major
-
-.PHONY: release
-release: ## Create a new release (specify TYPE=patch|minor|major)
-	@echo "Creating $(TYPE) release..."
-	
-	# Check if working directory is clean
-	@if [ -n "$$(git status --porcelain)" ]; then \
-		echo "Error: Working directory is not clean. Commit or stash changes first."; \
-		exit 1; \
-	fi
-	
-	# Get current version
-	@CURRENT_VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
-	echo "Current version: $$CURRENT_VERSION"
-	
-	# Parse version components
-	@CURRENT_VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
-	MAJOR=$$(echo $$CURRENT_VERSION | sed 's/v\([0-9]*\)\..*/\1/'); \
-	MINOR=$$(echo $$CURRENT_VERSION | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/'); \
-	PATCH=$$(echo $$CURRENT_VERSION | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/'); \
-	echo "Current version components: v$$MAJOR.$$MINOR.$$PATCH"
-	
-	# Increment version based on type
-	@CURRENT_VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
-	MAJOR=$$(echo $$CURRENT_VERSION | sed 's/v\([0-9]*\)\..*/\1/'); \
-	MINOR=$$(echo $$CURRENT_VERSION | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/'); \
-	PATCH=$$(echo $$CURRENT_VERSION | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/'); \
-	\
-	case "$(TYPE)" in \
-		major) \
-			NEW_MAJOR=$$((MAJOR + 1)); \
-			NEW_MINOR=0; \
-			NEW_PATCH=0; \
-			;; \
-		minor) \
-			NEW_MAJOR=$$MAJOR; \
-			NEW_MINOR=$$((MINOR + 1)); \
-			NEW_PATCH=0; \
-			;; \
-		patch) \
-			NEW_MAJOR=$$MAJOR; \
-			NEW_MINOR=$$MINOR; \
-			NEW_PATCH=$$((PATCH + 1)); \
-			;; \
-		*) \
-			echo "Error: Invalid release type. Use TYPE=patch|minor|major"; \
-			exit 1; \
-			;; \
-	esac; \
-	\
-	NEW_VERSION="v$$NEW_MAJOR.$$NEW_MINOR.$$NEW_PATCH"; \
-	echo "New version: $$NEW_VERSION"
-	
-	# Run tests before release
-	@echo "Running tests before release..."
-	@go test ./...
-	
-	# Create and push tag
-	@CURRENT_VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0"); \
-	MAJOR=$$(echo $$CURRENT_VERSION | sed 's/v\([0-9]*\)\..*/\1/'); \
-	MINOR=$$(echo $$CURRENT_VERSION | sed 's/v[0-9]*\.\([0-9]*\)\..*/\1/'); \
-	PATCH=$$(echo $$CURRENT_VERSION | sed 's/v[0-9]*\.[0-9]*\.\([0-9]*\)/\1/'); \
-	\
-	case "$(TYPE)" in \
-		major) \
-			NEW_MAJOR=$$((MAJOR + 1)); \
-			NEW_MINOR=0; \
-			NEW_PATCH=0; \
-			;; \
-		minor) \
-			NEW_MAJOR=$$MAJOR; \
-			NEW_MINOR=$$((MINOR + 1)); \
-			NEW_PATCH=0; \
-			;; \
-		patch) \
-			NEW_MAJOR=$$MAJOR; \
-			NEW_MINOR=$$MINOR; \
-			NEW_PATCH=$$((PATCH + 1)); \
-			;; \
-	esac; \
-	\
-	NEW_VERSION="v$$NEW_MAJOR.$$NEW_MINOR.$$NEW_PATCH"; \
-	\
-	echo "Creating tag $$NEW_VERSION..."; \
-	git tag -a $$NEW_VERSION -m "Release $$NEW_VERSION"; \
-	echo "Pushing tag $$NEW_VERSION..."; \
-	git push origin $$NEW_VERSION; \
-	echo "Release $$NEW_VERSION created and pushed successfully!"
-
-.PHONY: version
-version: ## Show current version information
-	@echo "Application: $(APP_NAME)"
-	@echo "Version: $(VERSION)"
-	@echo "Go Version: $(GO_VERSION)"
-	@echo "Build Time: $(BUILD_TIME)"
-	@echo "Git Commit: $(GIT_COMMIT)"
-	@echo "Git Branch: $(GIT_BRANCH)"
-
-.PHONY: deps
-deps: ## Download and vendor dependencies
-	@echo "Downloading dependencies..."
-	@go mod download
-	@go mod verify
-	@echo "Vendoring dependencies..."
-	@go mod vendor
-
-.PHONY: vendor
-vendor: ## Vendor dependencies
-	@echo "Vendoring dependencies..."
-	@go mod vendor
-
-.PHONY: fmt
-fmt: ## Format Go code
-	@echo "Formatting code..."
-	@go fmt ./...
-
-.PHONY: vet
-vet: ## Vet Go code
-	@echo "Vetting code..."
-	@go vet ./...
-
-.PHONY: lint
-lint: ## Lint Go code (requires golangci-lint)
-	@echo "Checking for golangci-lint..."
-	@GOLANGCI_LINT_PATH="$(shell go env GOPATH)/bin/golangci-lint"; \
-	if [ ! -f "$$GOLANGCI_LINT_PATH" ]; then \
-		echo "golangci-lint not found. curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin;"; \
-		exit 1; \
-	fi
-	@echo "Linting code..."
-	@$(shell go env GOPATH)/bin/golangci-lint run
-
-.PHONY: all
-all: deps test build ## Run deps, test, and build
-
-# Development convenience targets
-.PHONY: dev
-dev: deps build ## Development build
-	@echo "Development build complete"
-
-.PHONY: ci
-ci: deps test vet build ## CI pipeline simulation
-	@echo "CI pipeline completed successfully"
+# Help
+.PHONY: help
+help:
+	@echo "Monic Monitoring — available targets:"
+	@echo ""
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Quick start:"
+	@echo "  1. Edit .env — set HOST and any MONIC_* vars"
+	@echo "  2. make install   — copy configs to server"
+	@echo "  3. make deploy    — pull image and start monic"
