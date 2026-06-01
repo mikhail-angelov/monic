@@ -64,7 +64,7 @@ func TestManager_ValidateConfig(t *testing.T) {
 			config: types.AlertingConfig{
 				Telegram: types.TelegramConfig{
 					Enabled:  true,
-					BotToken: "test-token",
+					BotToken: "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz",
 					ChatID:   "test-chat-id",
 				},
 			},
@@ -73,7 +73,7 @@ func TestManager_ValidateConfig(t *testing.T) {
 		{
 			name:     "no methods configured",
 			config:   types.AlertingConfig{},
-			expected: "alerting is enabled but no alerting methods are configured",
+			expected: "", // no channels enabled — valid, user may not want alerts
 		},
 		{
 			name: "email enabled but missing SMTP host",
@@ -133,21 +133,6 @@ func TestManager_ValidateConfig(t *testing.T) {
 	}
 }
 
-func TestManager_ShouldSendLevel(t *testing.T) {
-	// Since shouldSendLevel always returns true in the current implementation,
-	// we'll test that it always allows sending regardless of level
-	config := &types.AlertingConfig{}
-
-	manager := NewManager(config, "TestApp")
-
-	levels := []string{"info", "warning", "critical"}
-	for _, level := range levels {
-		result := manager.shouldSendLevel(level)
-		if !result {
-			t.Errorf("Expected shouldSendLevel(%s) = true, got false", level)
-		}
-	}
-}
 
 func TestManager_ShouldSendCooldown(t *testing.T) {
 	config := &types.AlertingConfig{}
@@ -255,22 +240,16 @@ func contains(s, substr string) bool {
 }
 
 func TestManager_SendMailgun_MockServer(t *testing.T) {
-	// Create a mock Mailgun server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify basic auth
 		username, password, ok := r.BasicAuth()
 		if !ok || username != "api" || password != "test-key" {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-
-		// Verify content type
-		if r.Header.Get("Content-Type") != "application/json" {
+		if r.Header.Get("Content-Type") != "application/x-www-form-urlencoded" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-
-		// Return success
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"id": "test-id", "message": "Queued. Thank you."}`))
 	}))
@@ -283,27 +262,19 @@ func TestManager_SendMailgun_MockServer(t *testing.T) {
 			Domain:  "example.com",
 			From:    "monic@example.com",
 			To:      "admin@example.com",
-			BaseURL: server.URL, // Use mock server URL
+			BaseURL: server.URL,
 		},
 	}
 
 	manager := NewManager(config, "TestApp")
 
-	alert := types.Alert{
-		Type:      "test",
-		Message:   "Test alert",
-		Level:     "warning",
-		Timestamp: time.Now(),
-	}
-
-	err := manager.sendMailgun(alert)
+	err := manager.sendMailgunMessage("[TestApp Alert] WARNING - test", "Test alert body")
 	if err != nil {
 		t.Errorf("Expected no error from mock Mailgun server, got: %v", err)
 	}
 }
 
 func TestManager_SendMailgun_Error(t *testing.T) {
-	// Create a mock server that returns error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
@@ -322,14 +293,7 @@ func TestManager_SendMailgun_Error(t *testing.T) {
 
 	manager := NewManager(config, "TestApp")
 
-	alert := types.Alert{
-		Type:      "test",
-		Message:   "Test alert",
-		Level:     "warning",
-		Timestamp: time.Now(),
-	}
-
-	err := manager.sendMailgun(alert)
+	err := manager.sendMailgunMessage("[TestApp Alert] WARNING - test", "Test alert body")
 	if err == nil {
 		t.Error("Expected error from mock Mailgun server, got nil")
 	}

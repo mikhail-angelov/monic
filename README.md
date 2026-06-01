@@ -1,210 +1,123 @@
-# Monic - Monitoring Service (inspired by [monit service](https://mmonit.com/monit/))
+# Monic — Monitoring Service
 
-Pure **vibe-coded** lightweight monitoring service written in Go that runs in Docker containers and monitors host system resources, HTTP endpoints, and Docker containers.
+Lightweight monitoring service written in Go. Runs in Docker and monitors host system resources, HTTP endpoints, and Docker containers via label-based discovery.
 
 <img width="480" alt="image" src="https://github.com/user-attachments/assets/cfa23855-76db-4425-9d49-95689ea5b86a" />
 
 ## Features
 
-- **System Resource Monitoring**
-  - CPU usage monitoring with configurable thresholds
-  - Memory (RAM) usage monitoring
-  - Disk space monitoring for root path ("/")
-  - Configurable alert thresholds
-  - Efficient collection with minimal resource usage
-
-- **HTTP/HTTPS Monitoring**
-  - Monitor HTTP/HTTPS endpoint
-  - Configurable timeouts and expected status codes
-  - Response time tracking
-  - Concurrent checking (internal support)
-
-- **Docker Container Monitoring**
-  - Automatic label-based container discovery via Docker API
-  - Containers with `monic.enabled=true` labels are auto-detected
-  - Per-container HTTP health checks via `monic.check_http_url` label
-  - Real-time status tracking (running/stopped) with alerts
-  - Works inside Docker containers while monitoring the host
-
-- **Advanced Alerting System**
-  - Email alerts via SMTP
-  - Mailgun API integration
-  - Telegram bot notifications
-  - Configurable alert levels (warning, critical)
-  - Alert cooldown and deduplication
-  - 3 consecutive failures logic to prevent false alerts
-  - Recovery alerts when issues are resolved
-
-- **HTTP Stats Server**
-  - RESTful API for monitoring data
-  - Basic authentication support
-  - Real-time system statistics and health checks
-  - Historical data and alert status
-  - Web interface with disk size information
-
-- **Container Ready**
-  - Runs efficiently in Docker containers
-  - Monitors host system resources when running in privileged mode
-  - Lightweight Alpine-based Docker image
-  - Health checks and graceful shutdown
-
-- **CPU Efficient**
-  - Optimized goroutines for concurrent monitoring
-  - Configurable check intervals to reduce resource usage
-  - Minimal memory footprint
-  - Efficient system calls using gopsutil
-  - State management to prevent redundant alerts
+- **System Resource Monitoring** — CPU, memory, and disk (root path `/`) with configurable thresholds
+- **Docker Container Monitoring** — automatic label-based discovery; per-container HTTP health checks
+- **HTTP Health Checks** — per-container endpoint monitoring with configurable intervals and expected status codes
+- **Daily Digest** — summary report sent every day at midnight UTC via all configured alert channels
+- **Alerting** — Email (SMTP), Mailgun, and Telegram; 3-consecutive-failure logic, recovery alerts, per-type cooldown
+- **Stats Web UI** — `/stats` endpoint with JSON API and HTML dashboard, protected by HTTP Basic Auth
 
 ## Quick Start
 
-### Using Docker Compose (Recommended)
-
 ```bash
-# Clone and run
-git clone <repository>
+# Clone
+git clone https://github.com/mikhail-angelov/monic
 cd monic
-docker-compose up -d
-```
 
-### Using Docker
+# Copy and edit config
+cp .env.example .env
 
-```bash
-# Build the image
-docker build -t monic .
-
-# Run the container
-docker run -d \
-  --name monic \
-  --privileged \
-  -v /:/host:ro \
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  monic
-```
-
-### Running Locally
-
-```bash
-# Install dependencies
-go mod download
-
-# Build and run
-go build -o monic main.go
-./monic
-
-# Or use Makefile
-make build
-./monic
+# Run
+docker compose up -d
 ```
 
 ## Configuration
 
-The service uses environment variables for configuration. See `.env.example` for a complete example.
+All settings are environment variables with the `MONIC_` prefix. Copy `.env.example` as a starting point.
 
-### Environment Variables
+### System Monitoring
 
-The application uses environment variables with the `MONIC_` prefix. Here are the main configuration options:
+| Variable | Default | Description |
+|---|---|---|
+| `MONIC_CHECK_SYSTEM_INTERVAL` | `60` | Check interval in seconds |
+| `MONIC_CHECK_SYSTEM_CPU_THRESHOLD` | `80` | CPU % alert threshold |
+| `MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD` | `85` | Memory % alert threshold |
+| `MONIC_CHECK_SYSTEM_DISK_THRESHOLD` | `90` | Disk % alert threshold (root `/`) |
 
-```bash
-# Basic Configuration
-MONIC_APP_NAME="Monic Monitoring"
+### Docker Discovery
 
-# System Monitoring
-MONIC_CHECK_SYSTEM_INTERVAL=30
-MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
-MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
-MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
+Docker monitoring is always enabled. If the Docker socket is unavailable at startup, Monic logs a warning and continues without it.
 
-# HTTP Server (Stats Endpoint)
-MONIC_HTTP_SERVER_PORT=8080
-MONIC_HTTP_SERVER_USERNAME="admin"
-MONIC_HTTP_SERVER_PASSWORD="monic123"
+| Variable | Default | Description |
+|---|---|---|
+| `MONIC_CHECK_DOCKER_INTERVAL` | `300` | How often to poll the Docker API (seconds) |
+| `MONIC_CONTAINER_ID` | — | Container ID of Monic itself — excluded from monitoring |
 
-# Email Alerting (SMTP)
-MONIC_ALERTING_EMAIL_SMTP_HOST="smtp.gmail.com"
-MONIC_ALERTING_EMAIL_SMTP_PORT=587
-MONIC_ALERTING_EMAIL_USERNAME="your-email@gmail.com"
-MONIC_ALERTING_EMAIL_PASSWORD="your-app-password"
-MONIC_ALERTING_EMAIL_FROM="monic@yourdomain.com"
-MONIC_ALERTING_EMAIL_TO="admin@yourdomain.com"
-MONIC_ALERTING_EMAIL_USE_TLS=true
+### HTTP Stats Server
 
-# Mailgun Alerting
-MONIC_ALERTING_MAILGUN_API_KEY="your-mailgun-api-key"
-MONIC_ALERTING_MAILGUN_DOMAIN="your-domain.com"
-MONIC_ALERTING_MAILGUN_FROM="monic@yourdomain.com"
-MONIC_ALERTING_MAILGUN_TO="admin@yourdomain.com"
-MONIC_ALERTING_MAILGUN_BASE_URL="https://api.mailgun.net/v3"
+Automatically enabled when any of these variables are set.
 
-# Telegram Alerting
-MONIC_ALERTING_TELEGRAM_BOT_TOKEN="your-bot-token"
-MONIC_ALERTING_TELEGRAM_CHAT_ID="your-chat-id"
+| Variable | Default | Description |
+|---|---|---|
+| `MONIC_HTTP_SERVER_PORT` | — | Port to listen on |
+| `MONIC_HTTP_SERVER_USERNAME` | — | Basic auth username (optional) |
+| `MONIC_HTTP_SERVER_PASSWORD` | — | Basic auth password (optional) |
 
-# Docker Discovery (label-based, v2)
-MONIC_CHECK_DOCKER_INTERVAL=300
-```
+### Daily Digest
 
-### Configuration Options
+Enabled by default. Sends a 24-hour summary at midnight UTC.
 
-- **System Monitoring** (`MONIC_CHECK_SYSTEM_*`)
-  - `INTERVAL`: System check interval in seconds (default: 30)
-  - `CPU_THRESHOLD`: CPU usage percentage threshold for alerts (default: 80)
-  - `MEMORY_THRESHOLD`: Memory usage percentage threshold for alerts (default: 85)
-  - `DISK_THRESHOLD`: Disk usage percentage threshold for alerts (default: 90)
-  - **Note**: Disk monitoring now only checks the root path ("/") for simplicity
+| Variable | Default | Description |
+|---|---|---|
+| `MONIC_DIGEST_ENABLED` | `true` | Set to `false` to disable |
 
-### Docker Discovery (`MONIC_CHECK_DOCKER_*`)
-  - `INTERVAL`: Polling interval in seconds (default: 300 = 5 min). Docker containers are discovered automatically via labels.
+### Alerting
 
-- **HTTP Server** (`MONIC_HTTP_SERVER_*`)
-  - `PORT`: HTTP server port for stats endpoint (default: 8080)
-  - `USERNAME`: Basic auth username (optional)
-  - `PASSWORD`: Basic auth password (optional)
-  - **Note**: Server is automatically enabled when port is configured
+Each channel is auto-enabled when its variables are present.
 
-- **Email Alerting** (`MONIC_ALERTING_EMAIL_*`)
-  - `SMTP_HOST`: SMTP server hostname
-  - `SMTP_PORT`: SMTP server port
-  - `USERNAME`: SMTP username
-  - `PASSWORD`: SMTP password
-  - `FROM`: Sender email address
-  - `TO`: Recipient email address
-  - `USE_TLS`: Enable TLS (true/false)
+**Email (SMTP)**
 
-- **Mailgun Alerting** (`MONIC_ALERTING_MAILGUN_*`)
-  - `API_KEY`: Mailgun API key
-  - `DOMAIN`: Mailgun domain
-  - `FROM`: Sender email address
-  - `TO`: Recipient email address
-  - `BASE_URL`: Mailgun API base URL
+| Variable | Description |
+|---|---|
+| `MONIC_ALERTING_EMAIL_SMTP_HOST` | SMTP hostname (e.g. `postbox.cloud.yandex.net`) |
+| `MONIC_ALERTING_EMAIL_SMTP_PORT` | Port — `587` for STARTTLS, `465` for TLS |
+| `MONIC_ALERTING_EMAIL_USERNAME` | SMTP username |
+| `MONIC_ALERTING_EMAIL_PASSWORD` | SMTP password or API key |
+| `MONIC_ALERTING_EMAIL_FROM` | Sender address |
+| `MONIC_ALERTING_EMAIL_TO` | Recipient address |
+| `MONIC_ALERTING_EMAIL_USE_TLS` | `true` for port 465 (direct TLS); `false` for port 587 (STARTTLS) |
 
-- **Telegram Alerting** (`MONIC_ALERTING_TELEGRAM_*`)
-  - `BOT_TOKEN`: Telegram bot token
-  - `CHAT_ID`: Telegram chat ID
+**Mailgun**
 
-- **Docker Monitoring** (`MONIC_CHECK_DOCKER_*`)
-  - `INTERVAL`: Docker check interval in seconds (default: 60)
-  - `CONTAINERS`: Comma-separated list of specific containers to monitor (empty for all)
+| Variable | Description |
+|---|---|
+| `MONIC_ALERTING_MAILGUN_API_KEY` | Mailgun API key |
+| `MONIC_ALERTING_MAILGUN_DOMAIN` | Mailgun domain |
+| `MONIC_ALERTING_MAILGUN_FROM` | Sender address |
+| `MONIC_ALERTING_MAILGUN_TO` | Recipient address |
+| `MONIC_ALERTING_MAILGUN_BASE_URL` | API base URL (default: `https://api.mailgun.net/v3`) |
 
-## Docker Configuration
+**Telegram**
 
-### Label-Based Discovery (v2)
+| Variable | Description |
+|---|---|
+| `MONIC_ALERTING_TELEGRAM_BOT_TOKEN` | Bot token from `@BotFather` |
+| `MONIC_ALERTING_TELEGRAM_CHAT_ID` | Target chat or channel ID |
 
-Monic automatically discovers containers by polling the Docker API. Only containers with `monic.enabled=true` label are monitored. Add labels to any Docker container:
+## Docker Container Labels
 
-```yaml
-labels:
-  monic.enabled: "true"                    # Required: enable monitoring
-  monic.check: "container"                 # Check type: "container" (status) or "http" (with health check)
-  monic.check_http_url: "https://..."      # External URL for HTTP health check (optional)
-  monic.check_http_interval: "30"          # Seconds between HTTP checks (default: 30)
-  monic.check_http_timeout: "5"            # HTTP timeout in seconds (default: 5)  
-  monic.check_http_expected: "200"         # Expected HTTP status code (default: 200)
-  monic.name: "My Service"                 # Human-friendly name (optional, fallback: container name)
-```
+Monic discovers containers by polling the Docker API every `MONIC_CHECK_DOCKER_INTERVAL` seconds. Add these labels to any container you want monitored:
 
-#### Examples
+| Label | Required | Default | Description |
+|---|---|---|---|
+| `monic.enabled` | yes | — | Set to `"true"` to enable monitoring |
+| `monic.check` | no | `container` | `container` (status only) or `http` (+ health check) |
+| `monic.check_http_url` | no | — | URL for HTTP health check; also implicitly sets `monic.check=http` |
+| `monic.check_http_interval` | no | `30` | Seconds between HTTP checks |
+| `monic.check_http_timeout` | no | `5` | HTTP request timeout in seconds |
+| `monic.check_http_expected` | no | `200` | Expected HTTP status code |
+| `monic.name` | no | container name | Display name in alerts and UI |
 
-Monitor only container status:
+### Examples
+
+Monitor container status only:
+
 ```yaml
 services:
   postgres:
@@ -214,6 +127,7 @@ services:
 ```
 
 Monitor status + HTTP health check:
+
 ```yaml
 services:
   my-app:
@@ -222,224 +136,112 @@ services:
       monic.enabled: "true"
       monic.check: "http"
       monic.check_http_url: "https://example.com/api/health"
+      monic.check_http_interval: "30"
       monic.name: "My Web App"
 ```
 
-### Host Monitoring
+## Host Monitoring
 
-To monitor host system resources from within a Docker container:
+To monitor host resources from inside a container, run with:
 
-1. Run with `--privileged` flag
-2. Mount host filesystem: `-v /:/host:ro`
-3. Mount Docker socket for container monitoring: `-v /var/run/docker.sock:/var/run/docker.sock:ro`
-
-
-## Web Interface
-
-The HTTP stats server provides a web interface at `/stats` that displays:
-
-- **System Resources**: CPU, memory, and disk usage with progress bars
-- **Disk Information**: Total size, used space, free space in GB
-- **HTTP Checks**: Status of monitored endpoints
-- **Recent Alerts**: Active and recent alerts
-- **System Details**: Host information and runtime stats
-
-The interface automatically refreshes every 30 seconds and shows disk size information with color-coded thresholds.
-
-## Monitoring Output
-
-The service logs monitoring information in the following format:
-
-```
-System Stats - CPU: 15.23%, Memory: 45.67%, Disk: /:25.1%
-HTTP Stats - Total: 2, Success: 2, Failed: 0, Success Rate: 100.0%
-Docker Stats - Total: 5, Running: 4, Stopped: 1, Running: 80.0%
-ALERT [warning] cpu: CPU usage is 85.23% (threshold: 80%)
-ALERT [critical] http_local_service: HTTP check failed for local_service: connection refused
+```yaml
+services:
+  monic:
+    privileged: true
+    volumes:
+      - /:/host:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 ```
 
-## Alert Types
+## Alert Logic
 
-- **CPU**: CPU usage exceeds threshold
-- **Memory**: Memory usage exceeds threshold  
-- **Disk**: Disk usage exceeds threshold on root path
-- **HTTP**: HTTP check fails (wrong status code or connection error)
-- **Docker**: Container status changes or resource issues
+- Alerts fire after **3 consecutive failures** to suppress transient spikes
+- A **recovery alert** is sent when the metric returns to normal (only if a critical alert was previously sent)
+- Each alert type has a **1-minute cooldown** to prevent spam
+- The daily digest summarises the past 24 hours across all monitors
 
-### Alert Logic
+## Web UI
 
-- **3 Consecutive Failures**: Alerts are only sent after 3 consecutive failures to prevent false alerts
-- **Recovery Alerts**: Notifications are sent when issues are resolved
-- **Alert Cooldown**: Prevents alert spam with configurable cooldown periods
-- **State Management**: Tracks alert states to avoid duplicate notifications
-- **Automatic Feature Detection**: Features are automatically enabled when their configuration is provided
+The stats server serves:
 
-## Performance Considerations
+- `GET /stats` — JSON response (with `Accept: application/json`) or HTML dashboard
+- Protected by HTTP Basic Auth when credentials are configured
 
-- **CPU Efficient**: Uses goroutines and configurable intervals to minimize CPU usage
-- **Memory Efficient**: Limited history retention (last 100 entries)
-- **Concurrent Monitoring**: Performs system, HTTP, and Docker checks concurrently
-- **Graceful Shutdown**: Properly handles SIGINT/SIGTERM signals
-- **Efficient State Tracking**: Minimal memory usage for alert state management
+Dashboard shows: CPU / memory / disk usage, container statuses, HTTP check history, recent alerts.
 
-## Development
-
-### Project Structure
+## Project Structure
 
 ```
 .
-├── main.go                 # Main application entry point
-├── types/
-│   └── types.go            # Data structures and types
-./discovery/
-│   └── watcher.go          # Docker label-based container discovery
+├── main.go                  # Entry point
+├── types/types.go           # Shared data structures
+├── config/config.go         # Configuration loading
+├── discovery/watcher.go     # Docker label-based container discovery
 ├── monitor/
-│   ├── system.go           # System resource monitoring
-│   ├── http.go             # HTTP endpoint monitoring + health check registry
-│   └── docker.go           # Container status tracker and alerting
+│   ├── system.go            # System resource collection
+│   ├── http.go              # HTTP health check registry
+│   └── docker.go            # Container state tracker
 ├── alert/
-│   ├── alert.go            # Alert management and sending
-│   └── state_manager.go    # Alert state tracking
+│   ├── alert_manager.go     # Alert sending (email, Mailgun, Telegram)
+│   └── state_manager.go     # Deduplication and 3-failure logic
 ├── server/
-│   ├── server.go           # HTTP stats server
-│   ├── template.go         # HTML template rendering
-│   └── templates/
-│       └── stats.html      # Web interface template
-├── config/
-│   ├── config.go           # Configuration loading
-│   └── config_test.go      # Configuration tests
-├── .env.example            # Example environment variables
-├── Dockerfile              # Container build configuration
-├── docker-compose.yml      # Docker Compose configuration
-├── Makefile                # Build and test commands
-└── README.md               # This file
+│   ├── service.go           # Main monitoring service / goroutine orchestration
+│   ├── server.go            # HTTP stats server
+│   ├── storage.go           # In-memory ring-buffer storage
+│   ├── digest.go            # Daily digest builder
+│   └── template.go          # HTML rendering
+├── .env.example
+├── Dockerfile
+├── docker-compose.yml
+└── Makefile
 ```
 
-### Building and Testing
+## Building
 
 ```bash
-# Install dependencies
-go mod download
-
-# Build for current platform
-go build -o monic main.go
+# Build binary
+make build
 
 # Run tests
-go test ./...
-
-# Or use Makefile
-make build
 make test
+
+# Build Docker image
+make docker-build
+
+# Deploy to remote host (requires HOST= in .env)
+make deploy
 ```
-
-### Makefile Commands
-
-- `make build` - Build the application
-- `make test` - Run all tests
-- `make clean` - Clean build artifacts
-- `make docker-build` - Build Docker image
-- `make docker-run` - Run Docker container
 
 ## CI/CD
 
-The project includes GitHub Actions workflows for automated testing and Docker releases.
-
-### Automated Testing
-
-The `test.yml` workflow runs on every push to `main` and `develop` branches, and on pull requests to `main`. It:
-
-- Runs all Go tests
-- Builds the application
-- Verifies the build output
-
-### Docker Releases
-
-The `docker-release.yml` workflow automatically builds and publishes Docker images when version tags are pushed:
-
-- **Trigger**: Pushes to tags matching `v*.*.*` (e.g., `v1.0.0`)
-- **Actions**:
-  - Runs tests
-  - Builds multi-arch Docker images (linux/amd64, linux/arm64)
-  - Pushes to GitHub Container Registry (GHCR)
-  - Creates GitHub releases with release notes
-
-### Creating a Release
-
-1. Create and push a version tag:
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-2. The workflow will automatically:
-   - Build and test the code
-   - Create multi-arch Docker images
-   - Push to `ghcr.io/yourusername/monic`
-   - Create a GitHub release
-
-### Docker Image Tags
-
-Images are tagged with:
-- `latest` (for the default branch)
-- `v1.0.0` (specific version)
-- `v1.0` (major.minor)
-- `v1` (major)
-
-### Pulling Docker Images
+GitHub Actions builds and publishes on version tags:
 
 ```bash
-# Latest version
-docker pull ghcr.io/yourusername/monic:latest
-
-# Specific version
-docker pull ghcr.io/yourusername/monic:v1.0.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
-## Version Information
-
-The application includes version information that can be accessed via:
-
-```bash
-# Check version
-./monic --version
-# or
-./monic -v
-```
-
-The version is set during build and is included in Docker images when built via GitHub Actions.
+Images are pushed to `ghcr.io/mikhail-angelov/monic` with tags `latest`, `v1.2.0`, `v1.2`, `v1`.
 
 ## Troubleshooting
 
-### Common Issues
+| Problem | Check |
+|---|---|
+| Docker monitoring shows no containers | Verify `/var/run/docker.sock` is mounted and containers have `monic.enabled=true` |
+| Alerts not arriving | Confirm env vars are set; check logs for send errors |
+| High CPU | Increase `MONIC_CHECK_SYSTEM_INTERVAL` |
+| Permission denied | Run container with `--privileged` and `-v /:/host:ro` |
 
-1. **Permission denied errors**
-   - Ensure container runs with `--privileged` flag
-   - Check mounted volume permissions
-
-2. **HTTP checks failing**
-   - Verify URLs are accessible from container network
-   - Check firewall rules and network configuration
-
-3. **High CPU usage**
-   - Increase check intervals in configuration
-   - Reduce number of HTTP checks
-
-4. **Docker monitoring not working**
-   - Ensure Docker socket is mounted correctly
-   - Check container has access to Docker daemon
-
-5. **Alerts not sending**
-   - Verify alerting environment variables are set correctly
-   - Check SMTP/Mailgun/Telegram credentials
-   - Verify network connectivity for alert sending
-
-### Logs
-
-Check container logs:
 ```bash
-docker logs monic-monitor
+docker logs monic
+```
+
+## Version
+
+```bash
+./monic --version
 ```
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT

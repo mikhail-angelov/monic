@@ -55,8 +55,6 @@ func (s *testDigestStorage) AddHTTPCheckResult(result types.HTTPCheckResult) {
 	s.httpResults = append(s.httpResults, result)
 }
 
-func (s *testDigestStorage) AddDockerContainerStats(stats []types.DockerContainerStats) {
-}
 
 func (s *testDigestStorage) ClearAlerts() {
 	s.alerts = nil

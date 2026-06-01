@@ -9,33 +9,28 @@ import (
 
 // Storage defines the interface for storage operations
 type Storage interface {
-	// Methods used by StatsServer
 	GetLatestSystemStats() *types.SystemStats
 	GetAlertsCount() int
 	GetHTTPCheckResults() []types.HTTPCheckResult
 	GetAlerts() []types.Alert
 	GetSystemStats() []types.SystemStats
 
-	// Methods used by MonitorService
 	AddSystemStats(stats types.SystemStats)
 	AddAlert(alert types.Alert)
 	AddAlerts(alerts []types.Alert)
 	AddHTTPCheckResult(result types.HTTPCheckResult)
-	AddDockerContainerStats(stats []types.DockerContainerStats)
 	ClearAlerts()
 }
 
-// StorageManager provides thread-safe storage for monitoring data
+// StorageManager provides thread-safe in-memory storage for monitoring data
 type StorageManager struct {
-	alerts        []types.Alert
-	statsHistory  []types.SystemStats
-	httpHistory   []types.HTTPCheckResult
-	dockerHistory []types.DockerContainerStats
+	alerts      []types.Alert
+	statsHistory []types.SystemStats
+	httpHistory  []types.HTTPCheckResult
 
-	alertsMu        sync.RWMutex
-	statsHistoryMu  sync.RWMutex
-	httpHistoryMu   sync.RWMutex
-	dockerHistoryMu sync.RWMutex
+	alertsMu       sync.RWMutex
+	statsHistoryMu sync.RWMutex
+	httpHistoryMu  sync.RWMutex
 
 	maxHistorySize int
 }
@@ -43,19 +38,17 @@ type StorageManager struct {
 // NewStorageManager creates a new thread-safe storage manager
 func NewStorageManager(maxHistorySize int) *StorageManager {
 	if maxHistorySize <= 0 {
-		maxHistorySize = 100 // Default to 100 entries
+		maxHistorySize = 100
 	}
-
 	return &StorageManager{
 		alerts:         make([]types.Alert, 0),
 		statsHistory:   make([]types.SystemStats, 0),
 		httpHistory:    make([]types.HTTPCheckResult, 0),
-		dockerHistory:  make([]types.DockerContainerStats, 0),
 		maxHistorySize: maxHistorySize,
 	}
 }
 
-// AddAlert adds an alert to storage
+// AddAlert adds a single alert to storage
 func (sm *StorageManager) AddAlert(alert types.Alert) {
 	sm.alertsMu.Lock()
 	defer sm.alertsMu.Unlock()
@@ -71,7 +64,6 @@ func (sm *StorageManager) AddAlerts(alerts []types.Alert) {
 	if len(alerts) == 0 {
 		return
 	}
-
 	sm.alertsMu.Lock()
 	defer sm.alertsMu.Unlock()
 
@@ -81,12 +73,11 @@ func (sm *StorageManager) AddAlerts(alerts []types.Alert) {
 	}
 }
 
-// GetAlerts returns all alerts
+// GetAlerts returns a copy of all stored alerts
 func (sm *StorageManager) GetAlerts() []types.Alert {
 	sm.alertsMu.RLock()
 	defer sm.alertsMu.RUnlock()
 
-	// Return a copy to avoid race conditions
 	result := make([]types.Alert, len(sm.alerts))
 	copy(result, sm.alerts)
 	return result
@@ -96,11 +87,17 @@ func (sm *StorageManager) GetAlerts() []types.Alert {
 func (sm *StorageManager) ClearAlerts() {
 	sm.alertsMu.Lock()
 	defer sm.alertsMu.Unlock()
-
-	sm.alerts = make([]types.Alert, 0)
+	sm.alerts = sm.alerts[:0]
 }
 
-// AddSystemStats adds system stats to history
+// GetAlertsCount returns the number of stored alerts
+func (sm *StorageManager) GetAlertsCount() int {
+	sm.alertsMu.RLock()
+	defer sm.alertsMu.RUnlock()
+	return len(sm.alerts)
+}
+
+// AddSystemStats appends a system stats snapshot to history
 func (sm *StorageManager) AddSystemStats(stats types.SystemStats) {
 	sm.statsHistoryMu.Lock()
 	defer sm.statsHistoryMu.Unlock()
@@ -111,7 +108,7 @@ func (sm *StorageManager) AddSystemStats(stats types.SystemStats) {
 	}
 }
 
-// GetSystemStats returns all system stats history
+// GetSystemStats returns a copy of the full system stats history
 func (sm *StorageManager) GetSystemStats() []types.SystemStats {
 	sm.statsHistoryMu.RLock()
 	defer sm.statsHistoryMu.RUnlock()
@@ -121,7 +118,7 @@ func (sm *StorageManager) GetSystemStats() []types.SystemStats {
 	return result
 }
 
-// GetLatestSystemStats returns the most recent system stats
+// GetLatestSystemStats returns the most recent system stats snapshot
 func (sm *StorageManager) GetLatestSystemStats() *types.SystemStats {
 	sm.statsHistoryMu.RLock()
 	defer sm.statsHistoryMu.RUnlock()
@@ -129,13 +126,11 @@ func (sm *StorageManager) GetLatestSystemStats() *types.SystemStats {
 	if len(sm.statsHistory) == 0 {
 		return nil
 	}
-
-	// Return a copy
 	latest := sm.statsHistory[len(sm.statsHistory)-1]
 	return &latest
 }
 
-// AddHTTPCheckResult adds HTTP check result to history
+// AddHTTPCheckResult appends an HTTP check result to history
 func (sm *StorageManager) AddHTTPCheckResult(result types.HTTPCheckResult) {
 	sm.httpHistoryMu.Lock()
 	defer sm.httpHistoryMu.Unlock()
@@ -146,7 +141,7 @@ func (sm *StorageManager) AddHTTPCheckResult(result types.HTTPCheckResult) {
 	}
 }
 
-// GetHTTPCheckResults returns all HTTP check results
+// GetHTTPCheckResults returns a copy of all HTTP check results
 func (sm *StorageManager) GetHTTPCheckResults() []types.HTTPCheckResult {
 	sm.httpHistoryMu.RLock()
 	defer sm.httpHistoryMu.RUnlock()
@@ -156,7 +151,7 @@ func (sm *StorageManager) GetHTTPCheckResults() []types.HTTPCheckResult {
 	return result
 }
 
-// GetLatestHTTPCheckResult returns the most recent HTTP check result for a given name
+// GetLatestHTTPCheckResult returns the most recent result for a given check name
 func (sm *StorageManager) GetLatestHTTPCheckResult(name string) *types.HTTPCheckResult {
 	sm.httpHistoryMu.RLock()
 	defer sm.httpHistoryMu.RUnlock()
@@ -170,64 +165,22 @@ func (sm *StorageManager) GetLatestHTTPCheckResult(name string) *types.HTTPCheck
 	return nil
 }
 
-// AddDockerContainerStats adds Docker container stats to history
-func (sm *StorageManager) AddDockerContainerStats(stats []types.DockerContainerStats) {
-	if len(stats) == 0 {
-		return
-	}
-
-	sm.dockerHistoryMu.Lock()
-	defer sm.dockerHistoryMu.Unlock()
-
-	sm.dockerHistory = append(sm.dockerHistory, stats...)
-	if len(sm.dockerHistory) > sm.maxHistorySize {
-		sm.dockerHistory = sm.dockerHistory[len(sm.dockerHistory)-sm.maxHistorySize:]
-	}
-}
-
-// GetDockerContainerStats returns all Docker container stats
-func (sm *StorageManager) GetDockerContainerStats() []types.DockerContainerStats {
-	sm.dockerHistoryMu.RLock()
-	defer sm.dockerHistoryMu.RUnlock()
-
-	result := make([]types.DockerContainerStats, len(sm.dockerHistory))
-	copy(result, sm.dockerHistory)
-	return result
-}
-
-// GetStatus returns the current status of storage
+// GetStatus returns counts for each storage bucket (for diagnostics)
 func (sm *StorageManager) GetStatus() map[string]any {
 	sm.alertsMu.RLock()
 	sm.statsHistoryMu.RLock()
 	sm.httpHistoryMu.RLock()
-	sm.dockerHistoryMu.RLock()
 	defer func() {
 		sm.alertsMu.RUnlock()
 		sm.statsHistoryMu.RUnlock()
 		sm.httpHistoryMu.RUnlock()
-		sm.dockerHistoryMu.RUnlock()
 	}()
 
 	return map[string]any{
-		"alerts_count":         len(sm.alerts),
-		"stats_history_count":  len(sm.statsHistory),
-		"http_history_count":   len(sm.httpHistory),
-		"docker_history_count": len(sm.dockerHistory),
-		"max_history_size":     sm.maxHistorySize,
-		"timestamp":            time.Now().Format(time.RFC3339),
+		"alerts_count":        len(sm.alerts),
+		"stats_history_count": len(sm.statsHistory),
+		"http_history_count":  len(sm.httpHistory),
+		"max_history_size":    sm.maxHistorySize,
+		"timestamp":           time.Now().Format(time.RFC3339),
 	}
-}
-
-// GetAlertsCount returns the number of alerts
-func (sm *StorageManager) GetAlertsCount() int {
-	sm.alertsMu.RLock()
-	defer sm.alertsMu.RUnlock()
-	return len(sm.alerts)
-}
-
-// GetDockerContainerStatsCount returns the number of Docker container stats
-func (sm *StorageManager) GetDockerContainerStatsCount() int {
-	sm.dockerHistoryMu.RLock()
-	defer sm.dockerHistoryMu.RUnlock()
-	return len(sm.dockerHistory)
 }

@@ -24,7 +24,6 @@ func createTestMonitorService(t *testing.T, config *types.Config) *MonitorServic
 		&config.HTTPServer,
 		systemMonitor,
 		storage,
-		stateManager,
 		nil, // containerTrack
 	)
 
@@ -50,7 +49,7 @@ func TestNewMonitorService(t *testing.T) {
 			CPUThreshold:    80,
 			MemoryThreshold: 85,
 			DiskThreshold:   90,
-			DiskPaths:       []string{"/"},
+			
 		},
 		DockerChecks: types.DockerConfig{
 			CheckInterval: 300,
@@ -96,7 +95,7 @@ func TestMonitorService_GetDiskUsageSummary(t *testing.T) {
 			CPUThreshold:    80,
 			MemoryThreshold: 85,
 			DiskThreshold:   90,
-			DiskPaths:       []string{"/"},
+			
 		},
 	}	
 
@@ -137,7 +136,7 @@ func TestMonitorService_GetDiskUsageSummary_Empty(t *testing.T) {
 			CPUThreshold:    80,
 			MemoryThreshold: 85,
 			DiskThreshold:   90,
-			DiskPaths:       []string{"/"},
+			
 		},
 	}	
 
@@ -153,48 +152,6 @@ func TestMonitorService_GetDiskUsageSummary_Empty(t *testing.T) {
 	}
 }
 
-func TestStringJoin(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    []string
-		sep      string
-		expected string
-	}{
-		{
-			name:     "empty slice",
-			input:    []string{},
-			sep:      ", ",
-			expected: "",
-		},
-		{
-			name:     "single element",
-			input:    []string{"hello"},
-			sep:      ", ",
-			expected: "hello",
-		},
-		{
-			name:     "multiple elements",
-			input:    []string{"a", "b", "c"},
-			sep:      ", ",
-			expected: "a, b, c",
-		},
-		{
-			name:     "different separator",
-			input:    []string{"a", "b", "c"},
-			sep:      "-",
-			expected: "a-b-c",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := stringJoin(tt.input, tt.sep)
-			if result != tt.expected {
-				t.Errorf("Expected '%s', got '%s'", tt.expected, result)
-			}
-		})
-	}
-}
 
 func TestMonitorService_ProcessAlerts(t *testing.T) {
 	config := &types.Config{
@@ -203,7 +160,7 @@ func TestMonitorService_ProcessAlerts(t *testing.T) {
 			CPUThreshold:    80,
 			MemoryThreshold: 85,
 			DiskThreshold:   90,
-			DiskPaths:       []string{"/"},
+			
 		},
 	}	
 

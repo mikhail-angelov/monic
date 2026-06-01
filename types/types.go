@@ -7,13 +7,13 @@ import "time"
 
 // Label constants for Docker container discovery
 const (
-	LabelEnabled          = "monic.enabled"
-	LabelCheck            = "monic.check"
-	LabelCheckHTTPURL     = "monic.check_http_url"
+	LabelEnabled           = "monic.enabled"
+	LabelCheck             = "monic.check"
+	LabelCheckHTTPURL      = "monic.check_http_url"
 	LabelCheckHTTPInterval = "monic.check_http_interval"
 	LabelCheckHTTPTimeout  = "monic.check_http_timeout"
 	LabelCheckHTTPExpected = "monic.check_http_expected"
-	LabelName             = "monic.name"
+	LabelName              = "monic.name"
 
 	CheckTypeContainer = "container"
 	CheckTypeHTTP      = "http"
@@ -31,11 +31,10 @@ type Config struct {
 
 // SystemChecksConfig contains system monitoring settings
 type SystemChecksConfig struct {
-	Interval        int      `envconfig:"INTERVAL"`
-	CPUThreshold    int      `envconfig:"CPU_THRESHOLD"`
-	MemoryThreshold int      `envconfig:"MEMORY_THRESHOLD"`
-	DiskThreshold   int      `envconfig:"DISK_THRESHOLD"`
-	DiskPaths       []string `envconfig:"DISK_PATHS"`
+	Interval        int `envconfig:"INTERVAL"`
+	CPUThreshold    int `envconfig:"CPU_THRESHOLD"`
+	MemoryThreshold int `envconfig:"MEMORY_THRESHOLD"`
+	DiskThreshold   int `envconfig:"DISK_THRESHOLD"`
 }
 
 // AlertingConfig contains alert notification settings
@@ -121,7 +120,6 @@ type HTTPCheck struct {
 	Timeout        int
 	ExpectedStatus int
 	CheckInterval  int
-	LastCheck      time.Time
 }
 
 // HTTPCheckResult contains the result of an HTTP check
@@ -161,28 +159,13 @@ type AlertState struct {
 	ConsecutiveChecks int
 	LastAlertSent     time.Time
 	LastStateChange   time.Time
-	SentCriticalAlert bool // Track if we sent a critical alert for current state
+	SentCriticalAlert bool
 }
 
 // DockerConfig contains Docker container monitoring settings
 type DockerConfig struct {
 	Enabled       bool
 	CheckInterval int `envconfig:"INTERVAL"` // default: 300 (5 min)
-}
-
-// DockerContainerStats contains Docker container status information
-type DockerContainerStats struct {
-	ContainerID string
-	Name        string
-	Status      string
-	State       string
-	Running     bool
-	Created     time.Time
-	StartedAt   string
-	FinishedAt  string
-	ExitCode    int
-	Error       string
-	Timestamp   time.Time
 }
 
 // HTTPServerConfig contains HTTP server settings for stats endpoint
@@ -193,7 +176,8 @@ type HTTPServerConfig struct {
 	Password string `envconfig:"PASSWORD"`
 }
 
-// DigestConfig contains daily digest settings
+// DigestConfig contains daily digest settings.
+// Set MONIC_DIGEST_ENABLED=false to disable.
 type DigestConfig struct {
-	Enabled bool // enabled by default; set MONIC_DAILY_REPORT=false to disable
+	Enabled bool
 }

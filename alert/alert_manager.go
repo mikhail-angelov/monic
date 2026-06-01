@@ -18,410 +18,102 @@ import (
 
 // Manager handles sending alerts via configured channels
 type Manager struct {
-	config   *types.AlertingConfig
-	appName  string
-	lastSent map[string]time.Time // Track last sent alerts to avoid spam
+	config     *types.AlertingConfig
+	appName    string
+	lastSent   map[string]time.Time
+	httpClient *http.Client
 }
 
 // NewManager creates a new alert manager instance
 func NewManager(config *types.AlertingConfig, appName string) *Manager {
 	return &Manager{
-		config:   config,
-		appName:  appName,
-		lastSent: make(map[string]time.Time),
+		config:     config,
+		appName:    appName,
+		lastSent:   make(map[string]time.Time),
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
 // SendAlert sends an alert through all configured channels
 func (am *Manager) SendAlert(alert types.Alert) error {
-	// Check if we should send this alert based on level
-	if !am.shouldSendLevel(alert.Level) {
-		return nil
-	}
-
-	// Check cooldown period
 	if !am.shouldSendCooldown(alert) {
 		return nil
 	}
 
+	appName := am.getAppName()
+	subject := fmt.Sprintf("[%s Alert] %s - %s", appName, strings.ToUpper(alert.Level), alert.Type)
+	body := am.buildEmailBody(alert)
+
 	var errs []string
 
-	// Send via SMTP email if enabled
 	if am.config.Email.Enabled {
-		if err := am.sendEmail(alert); err != nil {
+		if err := am.sendEmailMessage(subject, body); err != nil {
 			slog.Error("Failed to send email alert", "error", err)
 			errs = append(errs, fmt.Sprintf("email: %v", err))
 		}
 	}
 
-	// Send via Mailgun if enabled
 	if am.config.Mailgun.Enabled {
-		if err := am.sendMailgun(alert); err != nil {
+		if err := am.sendMailgunMessage(subject, body); err != nil {
 			slog.Error("Failed to send Mailgun alert", "error", err)
 			errs = append(errs, fmt.Sprintf("mailgun: %v", err))
 		}
 	}
 
-	// Send via Telegram if enabled
 	if am.config.Telegram.Enabled {
-		if err := am.sendTelegram(alert); err != nil {
+		if err := am.sendTelegramMessage(am.buildTelegramAlert(alert)); err != nil {
 			slog.Error("Failed to send Telegram alert", "error", err)
 			errs = append(errs, fmt.Sprintf("telegram: %v", err))
 		}
 	}
 
-	// Update last sent time
 	am.lastSent[alert.Type] = time.Now()
 
 	if len(errs) > 0 {
 		return fmt.Errorf("failed to send alerts: %s", strings.Join(errs, "; "))
 	}
-
 	slog.Info("Alert sent", "level", alert.Level, "message", alert.Message)
 	return nil
 }
 
-// shouldSendLevel checks if the alert level should be sent
-func (am *Manager) shouldSendLevel(_ string) bool {
-	// If no levels configured, send all
-	return true
-}
-
-// shouldSendCooldown checks if enough time has passed since the last alert of this type
-func (am *Manager) shouldSendCooldown(alert types.Alert) bool {
-
-	lastSent, exists := am.lastSent[alert.Type]
-	if !exists {
-		return true // Never sent this type before
-	}
-
-	cooldownDuration := time.Duration(1) * time.Minute
-	return time.Since(lastSent) >= cooldownDuration
-}
-
-// sendEmail sends an alert via SMTP email
-func (am *Manager) sendEmail(alert types.Alert) error {
-	emailConfig := am.config.Email
-
-	// Validate email configuration
-	if emailConfig.SMTPHost == "" || emailConfig.SMTPPort == 0 {
-		return fmt.Errorf("SMTP host and port must be configured")
-	}
-	if emailConfig.From == "" || emailConfig.To == "" {
-		return fmt.Errorf("from and to email addresses must be configured")
-	}
-
-	// Create email message
-	appName := am.getAppName()
-	subject := fmt.Sprintf("[%s Alert] %s - %s", appName, strings.ToUpper(alert.Level), alert.Type)
-	body := am.buildEmailBody(alert)
-
-	// Build message headers
-	headers := make(map[string]string)
-	headers["From"] = emailConfig.From
-	headers["To"] = emailConfig.To
-	headers["Subject"] = subject
-	headers["Content-Type"] = "text/plain; charset=\"utf-8\""
-
-	// Build message
-	message := ""
-	for k, v := range headers {
-		message += fmt.Sprintf("%s: %s\r\n", k, v)
-	}
-	message += "\r\n" + body
-
-	// Connect to SMTP server
-	auth := smtp.PlainAuth("", emailConfig.Username, emailConfig.Password, emailConfig.SMTPHost)
-	addr := fmt.Sprintf("%s:%d", emailConfig.SMTPHost, emailConfig.SMTPPort)
-
-	if emailConfig.UseTLS {
-		return am.sendEmailTLS(addr, auth, emailConfig, message)
-	}
-	// Use plain SMTP
-	err := smtp.SendMail(addr, auth, emailConfig.From, []string{emailConfig.To}, []byte(message))
-	if err != nil {
-		return fmt.Errorf("SMTP send failed: %w", err)
-	}
-	slog.Info("Email alert sent (plain SMTP)", "recipient", emailConfig.To)
-
-	return nil
-}
-
-// sendEmailTLS sends an email using TLS
-func (am *Manager) sendEmailTLS(addr string, auth smtp.Auth, emailConfig types.EmailConfig, message string) error {
-	// Use STARTTLS (required for Gmail)
-	client, err := smtp.Dial(addr)
-	if err != nil {
-		return fmt.Errorf("SMTP dial failed: %w", err)
-	}
-	defer client.Close()
-
-	// Start TLS
-	tlsconfig := &tls.Config{
-		ServerName: emailConfig.SMTPHost,
-		MinVersion: tls.VersionTLS12,
-	}
-	if err = client.StartTLS(tlsconfig); err != nil {
-		return fmt.Errorf("STARTTLS failed: %w", err)
-	}
-
-	// Auth
-	if err = client.Auth(auth); err != nil {
-		return fmt.Errorf("SMTP auth failed: %w", err)
-	}
-
-	// Send email
-	if err = client.Mail(emailConfig.From); err != nil {
-		return fmt.Errorf("SMTP MAIL failed: %w", err)
-	}
-	if err = client.Rcpt(emailConfig.To); err != nil {
-		return fmt.Errorf("SMTP RCPT failed: %w", err)
-	}
-
-	w, err := client.Data()
-	if err != nil {
-		return fmt.Errorf("SMTP DATA failed: %w", err)
-	}
-	defer w.Close()
-
-	_, err = w.Write([]byte(message))
-	if err != nil {
-		return fmt.Errorf("SMTP message write failed: %w", err)
-	}
-	slog.Info("Email alert sent (TLS)", "recipient", emailConfig.To)
-	return nil
-}
-
-// getAppName returns the application name, defaulting to "Monic" if not configured
-func (am *Manager) getAppName() string {
-	if am.appName != "" {
-		return am.appName
-	}
-	return "Monic"
-}
-
-// sendMailgun sends an alert via Mailgun API
-func (am *Manager) sendMailgun(alert types.Alert) error {
-	mailgunConfig := am.config.Mailgun
-
-	// Validate Mailgun configuration
-	if mailgunConfig.APIKey == "" {
-		return fmt.Errorf("mailgun API key must be configured")
-	}
-	if mailgunConfig.Domain == "" {
-		return fmt.Errorf("mailgun domain must be configured")
-	}
-	if mailgunConfig.From == "" || mailgunConfig.To == "" {
-		return fmt.Errorf("from and to email addresses must be configured")
-	}
-
-	// Set default base URL if not provided
-	baseURL := mailgunConfig.BaseURL
-	if baseURL == "" {
-		baseURL = "https://api.mailgun.net/v3"
-	}
-
-	// Build request data
-	appName := am.getAppName()
-	subject := fmt.Sprintf("[%s Alert] %s - %s", appName, strings.ToUpper(alert.Level), alert.Type)
-	body := am.buildEmailBody(alert)
-
-	formData := map[string]string{
-		"from":    mailgunConfig.From,
-		"to":      mailgunConfig.To,
-		"subject": subject,
-		"text":    body,
-	}
-
-	// Create request
-	url := fmt.Sprintf("%s/%s/messages", baseURL, mailgunConfig.Domain)
-	formBytes, err := json.Marshal(formData)
-	if err != nil {
-		return fmt.Errorf("failed to encode form data: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(formBytes))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.SetBasicAuth("api", mailgunConfig.APIKey)
-	req.Header.Set("Content-Type", "application/json")
-
-	// Send request
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("mailgun API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("mailgun API returned status %s: %s", resp.Status, string(body))
-	}
-
-	slog.Info("Mailgun alert sent", "recipient", am.config.Mailgun.To)
-	return nil
-}
-
-// sendTelegram sends an alert via Telegram Bot API
-func (am *Manager) sendTelegram(alert types.Alert) error {
-	telegramConfig := am.config.Telegram
-
-	// Validate Telegram configuration
-	if telegramConfig.BotToken == "" {
-		return fmt.Errorf("telegram bot token must be configured")
-	}
-	if telegramConfig.ChatID == "" {
-		return fmt.Errorf("telegram chat ID must be configured")
-	}
-
-	// Validate bot token format (basic validation)
-	if !isValidTelegramBotToken(telegramConfig.BotToken) {
-		return fmt.Errorf("invalid Telegram bot token format")
-	}
-
-	// Build message
-	appName := am.getAppName()
-	message := ""
-	if alert.Level == "info" {
-		message += "✅"
-	} else {
-		message += "❌"
-	}
-	message += fmt.Sprintf("<b>[%s] %s - %s</b>: %s \n", appName, strings.ToUpper(alert.Level), alert.Type, alert.Message)
-	message += alert.Timestamp.Format(time.RFC1123)
-
-	// Create request URL
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", telegramConfig.BotToken)
-
-	// Create request body
-	reqBody := map[string]string{
-		"chat_id":    telegramConfig.ChatID,
-		"text":       message,
-		"parse_mode": "HTML",
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("failed to marshal Telegram request: %w", err)
-	}
-
-	// Create HTTP client with timeout
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Create request
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return fmt.Errorf("failed to create Telegram request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	// Send request
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("telegram API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram API returned status %d", resp.StatusCode)
-	}
-
-	return nil
-}
-
-// isValidTelegramBotToken performs basic validation of Telegram bot token format
-func isValidTelegramBotToken(token string) bool {
-	// Telegram bot tokens typically follow the pattern: digits:alphanumeric
-	// Example: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz
-	if len(token) < 20 {
-		return false
-	}
-
-	// Check for colon separator
-	parts := strings.Split(token, ":")
-	if len(parts) != 2 {
-		return false
-	}
-
-	// First part should be numeric (bot ID)
-	for _, ch := range parts[0] {
-		if ch < '0' || ch > '9' {
-			return false
-		}
-	}
-
-	// Second part should be alphanumeric
-	for _, ch := range parts[1] {
-		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
-			return false
-		}
-	}
-
-	return true
-}
-
-// buildEmailBody creates the email body for an alert
-func (am *Manager) buildEmailBody(alert types.Alert) string {
-	var body strings.Builder
-	appName := am.getAppName()
-
-	body.WriteString(fmt.Sprintf("%s MONITORING ALERT\n", strings.ToUpper(appName)))
-	body.WriteString("=====================\n\n")
-	body.WriteString(fmt.Sprintf("Alert Level: %s\n", strings.ToUpper(alert.Level)))
-	body.WriteString(fmt.Sprintf("Alert Type: %s\n", alert.Type))
-	body.WriteString(fmt.Sprintf("Message: %s\n", alert.Message))
-	body.WriteString(fmt.Sprintf("Timestamp: %s\n", alert.Timestamp.Format(time.RFC1123)))
-	body.WriteString(fmt.Sprintf("Server Time: %s\n\n", time.Now().Format(time.RFC1123)))
-	body.WriteString(fmt.Sprintf("This alert was generated by the %s monitoring service.\n", appName))
-
-	return body.String()
-}
-
 // SendAlerts sends multiple alerts
 func (am *Manager) SendAlerts(alerts []types.Alert) error {
-	var errors []string
-
+	var errs []string
 	for _, alert := range alerts {
 		if err := am.SendAlert(alert); err != nil {
-			errors = append(errors, err.Error())
+			errs = append(errs, err.Error())
 		}
 	}
-
-	if len(errors) > 0 {
-		return fmt.Errorf("some alerts failed to send: %s", strings.Join(errors, "; "))
+	if len(errs) > 0 {
+		return fmt.Errorf("some alerts failed to send: %s", strings.Join(errs, "; "))
 	}
-
 	return nil
 }
 
 // SendDigest sends a daily digest report through all configured channels.
-// The digest is formatted as plain text and routed to every enabled channel.
 func (am *Manager) SendDigest(digestText string) error {
 	appName := am.getAppName()
+	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
+
 	var errs []string
 
 	if am.config.Email.Enabled {
-		if err := am.sendDigestEmail(appName, digestText); err != nil {
+		if err := am.sendEmailMessage(subject, digestText); err != nil {
 			slog.Error("Failed to send digest email", "error", err)
 			errs = append(errs, fmt.Sprintf("email: %v", err))
 		}
 	}
 
 	if am.config.Mailgun.Enabled {
-		if err := am.sendDigestMailgun(appName, digestText); err != nil {
-			slog.Error("Failed to send digest Mailgun", "error", err)
+		if err := am.sendMailgunMessage(subject, digestText); err != nil {
+			slog.Error("Failed to send digest via Mailgun", "error", err)
 			errs = append(errs, fmt.Sprintf("mailgun: %v", err))
 		}
 	}
 
 	if am.config.Telegram.Enabled {
-		if err := am.sendDigestTelegram(appName, digestText); err != nil {
-			slog.Error("Failed to send digest Telegram", "error", err)
+		if err := am.sendTelegramDigest(appName, digestText); err != nil {
+			slog.Error("Failed to send digest via Telegram", "error", err)
 			errs = append(errs, fmt.Sprintf("telegram: %v", err))
 		}
 	}
@@ -433,126 +125,155 @@ func (am *Manager) SendDigest(digestText string) error {
 	return nil
 }
 
-// sendDigestEmail sends the digest via SMTP email with a daily subject.
-func (am *Manager) sendDigestEmail(appName, digestText string) error {
-	emailConfig := am.config.Email
-	if emailConfig.SMTPHost == "" || emailConfig.SMTPPort == 0 {
-		return fmt.Errorf("SMTP host and port must be configured")
+// sendEmailMessage sends an email with the given subject and body through the configured SMTP server.
+func (am *Manager) sendEmailMessage(subject, body string) error {
+	cfg := am.config.Email
+	message := "From: " + cfg.From + "\r\n" +
+		"To: " + cfg.To + "\r\n" +
+		"Subject: " + subject + "\r\n" +
+		"Content-Type: text/plain; charset=\"utf-8\"\r\n" +
+		"\r\n" + body
+
+	auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.SMTPHost)
+	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
+
+	if cfg.UseTLS {
+		return am.sendEmailTLS(addr, auth, cfg, message)
 	}
-	if emailConfig.From == "" || emailConfig.To == "" {
-		return fmt.Errorf("from and to email addresses must be configured")
-	}
-
-	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
-
-	headers := make(map[string]string)
-	headers["From"] = emailConfig.From
-	headers["To"] = emailConfig.To
-	headers["Subject"] = subject
-	headers["Content-Type"] = "text/plain; charset=\"utf-8\""
-
-	message := ""
-	for k, v := range headers {
-		message += fmt.Sprintf("%s: %s\r\n", k, v)
-	}
-	message += "\r\n" + digestText
-
-	auth := smtp.PlainAuth("", emailConfig.Username, emailConfig.Password, emailConfig.SMTPHost)
-	addr := fmt.Sprintf("%s:%d", emailConfig.SMTPHost, emailConfig.SMTPPort)
-
-	if emailConfig.UseTLS {
-		return am.sendEmailTLS(addr, auth, emailConfig, message)
-	}
-	err := smtp.SendMail(addr, auth, emailConfig.From, []string{emailConfig.To}, []byte(message))
-	if err != nil {
+	if err := smtp.SendMail(addr, auth, cfg.From, []string{cfg.To}, []byte(message)); err != nil {
 		return fmt.Errorf("SMTP send failed: %w", err)
 	}
-	slog.Info("Digest email sent", "recipient", emailConfig.To)
+	slog.Info("Email sent", "recipient", cfg.To, "subject", subject)
 	return nil
 }
 
-// sendDigestMailgun sends the digest via Mailgun with a daily subject.
-func (am *Manager) sendDigestMailgun(appName, digestText string) error {
-	mailgunConfig := am.config.Mailgun
-	if mailgunConfig.APIKey == "" {
-		return fmt.Errorf("Mailgun API key must be configured")
+// sendEmailTLS sends an email using STARTTLS (port 587 style).
+func (am *Manager) sendEmailTLS(addr string, auth smtp.Auth, cfg types.EmailConfig, message string) error {
+	client, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("SMTP dial failed: %w", err)
 	}
-	if mailgunConfig.Domain == "" {
-		return fmt.Errorf("Mailgun domain must be configured")
-	}
-	if mailgunConfig.From == "" || mailgunConfig.To == "" {
-		return fmt.Errorf("from and to email addresses must be configured")
-	}
+	defer client.Close()
 
-	baseURL := mailgunConfig.BaseURL
+	if err = client.StartTLS(&tls.Config{ServerName: cfg.SMTPHost, MinVersion: tls.VersionTLS12}); err != nil {
+		return fmt.Errorf("STARTTLS failed: %w", err)
+	}
+	if err = client.Auth(auth); err != nil {
+		return fmt.Errorf("SMTP auth failed: %w", err)
+	}
+	if err = client.Mail(cfg.From); err != nil {
+		return fmt.Errorf("SMTP MAIL failed: %w", err)
+	}
+	if err = client.Rcpt(cfg.To); err != nil {
+		return fmt.Errorf("SMTP RCPT failed: %w", err)
+	}
+	w, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("SMTP DATA failed: %w", err)
+	}
+	defer w.Close()
+	if _, err = w.Write([]byte(message)); err != nil {
+		return fmt.Errorf("SMTP message write failed: %w", err)
+	}
+	slog.Info("Email sent (TLS)", "recipient", cfg.To, "subject", cfg.From)
+	return nil
+}
+
+// sendMailgunMessage sends a message via Mailgun with the given subject and body.
+func (am *Manager) sendMailgunMessage(subject, body string) error {
+	cfg := am.config.Mailgun
+	baseURL := cfg.BaseURL
 	if baseURL == "" {
 		baseURL = "https://api.mailgun.net/v3"
 	}
 
-	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
-
-	// Mailgun /messages expects application/x-www-form-urlencoded, not JSON
 	form := url.Values{}
-	form.Set("from", mailgunConfig.From)
-	form.Set("to", mailgunConfig.To)
+	form.Set("from", cfg.From)
+	form.Set("to", cfg.To)
 	form.Set("subject", subject)
-	form.Set("text", digestText)
+	form.Set("text", body)
 
-	url := fmt.Sprintf("%s/%s/messages", baseURL, mailgunConfig.Domain)
-	req, err := http.NewRequest("POST", url, strings.NewReader(form.Encode()))
+	reqURL := fmt.Sprintf("%s/%s/messages", baseURL, cfg.Domain)
+	req, err := http.NewRequest("POST", reqURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to create Mailgun request: %w", err)
 	}
-
-	req.SetBasicAuth("api", mailgunConfig.APIKey)
+	req.SetBasicAuth("api", cfg.APIKey)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := am.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Mailgun API request failed: %w", err)
+		return fmt.Errorf("mailgun API request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("Mailgun API returned status %s: %s", resp.Status, string(body))
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("mailgun API returned status %s: %s", resp.Status, string(b))
 	}
-
-	slog.Info("Digest Mailgun sent", "recipient", mailgunConfig.To)
+	slog.Info("Mailgun message sent", "recipient", cfg.To, "subject", subject)
 	return nil
 }
 
-// sendDigestTelegram sends the digest via Telegram bot, splitting if too long.
-func (am *Manager) sendDigestTelegram(appName, digestText string) error {
-	telegramConfig := am.config.Telegram
-	if telegramConfig.BotToken == "" {
-		return fmt.Errorf("Telegram bot token must be configured")
+// sendTelegramMessage sends a single pre-formatted Telegram message (HTML parse mode).
+func (am *Manager) sendTelegramMessage(text string) error {
+	cfg := am.config.Telegram
+	reqURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", cfg.BotToken)
+	reqBody := map[string]string{
+		"chat_id":    cfg.ChatID,
+		"text":       text,
+		"parse_mode": "HTML",
 	}
-	if telegramConfig.ChatID == "" {
-		return fmt.Errorf("Telegram chat ID must be configured")
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Telegram request: %w", err)
 	}
-	if !isValidTelegramBotToken(telegramConfig.BotToken) {
-		return fmt.Errorf("invalid Telegram bot token format")
+	req, err := http.NewRequest("POST", reqURL, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram request: %w", err)
 	}
+	req.Header.Set("Content-Type", "application/json")
 
-	// Telegram has a 4096 character limit per message (runes, not bytes)
+	resp, err := am.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("telegram API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("telegram API returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// buildTelegramAlert formats a single alert as an HTML Telegram message.
+func (am *Manager) buildTelegramAlert(alert types.Alert) string {
+	appName := am.getAppName()
+	icon := "❌"
+	if alert.Level == "info" {
+		icon = "✅"
+	}
+	return fmt.Sprintf("%s<b>[%s] %s - %s</b>: %s\n%s",
+		icon, appName, strings.ToUpper(alert.Level), alert.Type,
+		alert.Message, alert.Timestamp.Format(time.RFC1123))
+}
+
+// sendTelegramDigest sends a digest, splitting into multiple messages if it exceeds Telegram's 4096-char limit.
+func (am *Manager) sendTelegramDigest(appName, digestText string) error {
 	const maxLen = 4000
-	message := fmt.Sprintf("<b>%s Daily Digest</b>\n%s", appName, time.Now().Format("2006-01-02"))
-	message += "\n\n<pre>"
-	message += escapeTelegramHTML(digestText)
-	message += "</pre>"
+	full := fmt.Sprintf("<b>%s Daily Digest</b>\n%s\n\n<pre>%s</pre>",
+		appName, time.Now().Format("2006-01-02"), escapeTelegramHTML(digestText))
 
-	if len([]rune(message)) <= maxLen {
-		return am.sendTelegramMessage(telegramConfig, message)
+	if len([]rune(full)) <= maxLen {
+		return am.sendTelegramMessage(full)
 	}
 
-	// Split into multiple messages by lines, counting runes not bytes
+	// Split by lines, counting runes to stay within the limit
 	lines := strings.Split(digestText, "\n")
 	var part string
 	for _, line := range lines {
 		if len([]rune(part))+len([]rune(line))+1 > maxLen-100 {
-			if err := am.sendTelegramMessage(telegramConfig, "<pre>"+escapeTelegramHTML(part)+"</pre>"); err != nil {
+			if err := am.sendTelegramMessage("<pre>" + escapeTelegramHTML(part) + "</pre>"); err != nil {
 				return err
 			}
 			part = line
@@ -564,55 +285,42 @@ func (am *Manager) sendDigestTelegram(appName, digestText string) error {
 		}
 	}
 	if part != "" {
-		return am.sendTelegramMessage(telegramConfig, "<pre>"+escapeTelegramHTML(part)+"</pre>")
+		return am.sendTelegramMessage("<pre>" + escapeTelegramHTML(part) + "</pre>")
 	}
 	return nil
 }
 
-// sendTelegramMessage is a helper to send a single Telegram message.
-func (am *Manager) sendTelegramMessage(config types.TelegramConfig, text string) error {
-	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", config.BotToken)
-	reqBody := map[string]string{
-		"chat_id":    config.ChatID,
-		"text":       text,
-		"parse_mode": "HTML",
+func (am *Manager) shouldSendCooldown(alert types.Alert) bool {
+	lastSent, exists := am.lastSent[alert.Type]
+	if !exists {
+		return true
 	}
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("failed to marshal Telegram request: %w", err)
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
-	if err != nil {
-		return fmt.Errorf("failed to create Telegram request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("Telegram API request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
-	}
-	return nil
+	return time.Since(lastSent) >= time.Minute
 }
 
-// escapeTelegramHTML escapes characters that have special meaning in Telegram HTML.
-func escapeTelegramHTML(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	return s
+func (am *Manager) getAppName() string {
+	if am.appName != "" {
+		return am.appName
+	}
+	return "Monic"
+}
+
+func (am *Manager) buildEmailBody(alert types.Alert) string {
+	var b strings.Builder
+	appName := am.getAppName()
+	b.WriteString(fmt.Sprintf("%s MONITORING ALERT\n", strings.ToUpper(appName)))
+	b.WriteString("=====================\n\n")
+	b.WriteString(fmt.Sprintf("Alert Level: %s\n", strings.ToUpper(alert.Level)))
+	b.WriteString(fmt.Sprintf("Alert Type: %s\n", alert.Type))
+	b.WriteString(fmt.Sprintf("Message: %s\n", alert.Message))
+	b.WriteString(fmt.Sprintf("Timestamp: %s\n", alert.Timestamp.Format(time.RFC1123)))
+	b.WriteString(fmt.Sprintf("Server Time: %s\n\n", time.Now().Format(time.RFC1123)))
+	b.WriteString(fmt.Sprintf("This alert was generated by the %s monitoring service.\n", appName))
+	return b.String()
 }
 
 // ValidateConfig validates the alerting configuration
 func (am *Manager) ValidateConfig() error {
-
-	// Validate email configuration if enabled
 	if am.config.Email.Enabled {
 		if am.config.Email.SMTPHost == "" {
 			return fmt.Errorf("SMTP host is required for email alerts")
@@ -628,7 +336,6 @@ func (am *Manager) ValidateConfig() error {
 		}
 	}
 
-	// Validate Mailgun configuration if enabled
 	if am.config.Mailgun.Enabled {
 		if am.config.Mailgun.APIKey == "" {
 			return fmt.Errorf("API key is required for Mailgun alerts")
@@ -644,7 +351,6 @@ func (am *Manager) ValidateConfig() error {
 		}
 	}
 
-	// Validate Telegram configuration if enabled
 	if am.config.Telegram.Enabled {
 		if am.config.Telegram.BotToken == "" {
 			return fmt.Errorf("bot token is required for Telegram alerts")
@@ -652,12 +358,40 @@ func (am *Manager) ValidateConfig() error {
 		if am.config.Telegram.ChatID == "" {
 			return fmt.Errorf("chat ID is required for Telegram alerts")
 		}
-	}
-
-	// Validate that at least one alerting method is configured if enabled
-	if !am.config.Email.Enabled && !am.config.Mailgun.Enabled && !am.config.Telegram.Enabled {
-		return fmt.Errorf("alerting is enabled but no alerting methods are configured")
+		if !isValidTelegramBotToken(am.config.Telegram.BotToken) {
+			return fmt.Errorf("invalid Telegram bot token format")
+		}
 	}
 
 	return nil
+}
+
+// isValidTelegramBotToken performs basic validation of Telegram bot token format.
+// Expected format: digits:alphanumeric (e.g. 1234567890:ABCdef...)
+func isValidTelegramBotToken(token string) bool {
+	if len(token) < 20 {
+		return false
+	}
+	parts := strings.Split(token, ":")
+	if len(parts) != 2 {
+		return false
+	}
+	for _, ch := range parts[0] {
+		if ch < '0' || ch > '9' {
+			return false
+		}
+	}
+	for _, ch := range parts[1] {
+		if (ch < 'a' || ch > 'z') && (ch < 'A' || ch > 'Z') && (ch < '0' || ch > '9') && ch != '_' && ch != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func escapeTelegramHTML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }

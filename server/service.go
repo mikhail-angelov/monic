@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,6 +107,7 @@ func (ms *MonitorService) Stop() {
 		ms.healthRegistry.RemoveAll()
 	}
 
+	ms.statsServer.Stop()
 	close(ms.stopChan)
 	ms.wg.Wait()
 	slog.Info("Monic monitoring service stopped")
@@ -114,7 +117,11 @@ func (ms *MonitorService) Stop() {
 func (ms *MonitorService) systemMonitoringLoop() {
 	defer ms.wg.Done()
 
-	ticker := time.NewTicker(time.Duration(ms.config.SystemChecks.Interval) * time.Second)
+	interval := time.Duration(ms.config.SystemChecks.Interval) * time.Second
+	if interval <= 0 {
+		interval = 60 * time.Second
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -158,7 +165,7 @@ func (ms *MonitorService) dockerWatcherLoop() {
 
 	// Start the watcher (blocks until stop)
 	if err := ms.dockerWatcher.Start(ctx); err != nil {
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			slog.Error("Docker watcher stopped unexpectedly", "error", err)
 		}
 	}
@@ -359,31 +366,9 @@ func (ms *MonitorService) processAlerts() {
 
 // getDiskUsageSummary creates a summary of disk usage
 func (ms *MonitorService) getDiskUsageSummary(diskUsage map[string]types.DiskStats) string {
-	summary := make([]string, 0)
+	parts := make([]string, 0, len(diskUsage))
 	for path, stats := range diskUsage {
-		summary = append(summary, fmt.Sprintf("%s:%.1f%%", path, stats.UsedPercent))
+		parts = append(parts, fmt.Sprintf("%s:%.1f%%", path, stats.UsedPercent))
 	}
-	return fmt.Sprintf("[%s]", stringJoin(summary, ", "))
-}
-
-// stringJoin is a helper function to join strings
-func stringJoin(elems []string, sep string) string {
-	switch len(elems) {
-	case 0:
-		return ""
-	case 1:
-		return elems[0]
-	}
-	n := len(sep) * (len(elems) - 1)
-	for _, elem := range elems {
-		n += len(elem)
-	}
-
-	b := make([]byte, n)
-	bp := copy(b, elems[0])
-	for _, s := range elems[1:] {
-		bp += copy(b[bp:], sep)
-		bp += copy(b[bp:], s)
-	}
-	return string(b)
+	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
 }

@@ -13,30 +13,26 @@ import (
 	"bconf.com/monic/discovery"
 	"bconf.com/monic/monitor"
 	"bconf.com/monic/server"
+	"bconf.com/monic/types"
 )
 
 // version will be set during build
 var version = "dev"
 
 func main() {
-	// Handle version flag
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
 		fmt.Printf("Monic v%s\n", version)
 		return
 	}
 
-	// Configure structured logging
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
-	// Load configuration from environment variables
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		slog.Error("Failed to load configuration", "error", err)
 		os.Exit(1)
 	}
 
-	// Create all dependencies
 	systemMonitor := monitor.NewSystemMonitor(&cfg.SystemChecks)
 	httpMonitor := monitor.NewHTTPMonitor()
 	alertManager := alert.NewManager(&cfg.Alerting, cfg.AppName)
@@ -48,46 +44,16 @@ func main() {
 		&cfg.HTTPServer,
 		systemMonitor,
 		storage,
-		stateManager,
 		containerTrack,
 	)
 
-	// Initialize Docker discovery if enabled
-	var dockerWatcher *discovery.Watcher
-	var healthRegistry *monitor.HealthCheckRegistry
+	dockerWatcher, healthRegistry := initDockerWatcher(httpMonitor, cfg)
 
-	if cfg.DockerChecks.Enabled {
-		dockerClient, err := discovery.InitDockerClient()
-		if err != nil {
-			slog.Warn("Failed to initialize Docker client", "error", err)
-		} else {
-			interval := time.Duration(cfg.DockerChecks.CheckInterval) * time.Second
-			dockerWatcher = discovery.NewWatcher(dockerClient, interval)
-
-			// Exclude the Monic container itself
-			monicID := os.Getenv("MONIC_CONTAINER_ID")
-			if monicID != "" {
-				dockerWatcher.ExcludeContainer(monicID)
-			}
-
-			healthRegistry = monitor.NewHealthCheckRegistry(httpMonitor)
-		}
-	} else {
-		slog.Warn("Docker monitoring disabled")
-	}
-
-	// Initialize DigestService if enabled
 	var digestSvc *server.DigestService
 	if cfg.Digest.Enabled {
-		digestSvc = server.NewDigestService(
-			storage,
-			systemMonitor,
-			containerTrack,
-			cfg.AppName,
-		)
+		digestSvc = server.NewDigestService(storage, systemMonitor, containerTrack, cfg.AppName)
 	}
 
-	// Create and start monitoring service
 	service := server.NewMonitorService(
 		cfg,
 		systemMonitor,
@@ -107,11 +73,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	<-sigChan
 	service.Stop()
 	slog.Info("Monic monitoring service shutdown complete")
+}
+
+// initDockerWatcher initializes the Docker discovery watcher.
+// Returns nil values if the Docker daemon is unreachable.
+func initDockerWatcher(httpMon *monitor.HTTPMonitor, cfg *types.Config) (*discovery.Watcher, *monitor.HealthCheckRegistry) {
+	dockerClient, err := discovery.InitDockerClient()
+	if err != nil {
+		slog.Warn("Failed to initialize Docker client, Docker monitoring disabled", "error", err)
+		return nil, nil
+	}
+
+	interval := time.Duration(cfg.DockerChecks.CheckInterval) * time.Second
+	watcher := discovery.NewWatcher(dockerClient, interval)
+
+	if monicID := os.Getenv("MONIC_CONTAINER_ID"); monicID != "" {
+		watcher.ExcludeContainer(monicID)
+	}
+
+	return watcher, monitor.NewHealthCheckRegistry(httpMon)
 }

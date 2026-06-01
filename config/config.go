@@ -14,48 +14,43 @@ import (
 func LoadConfig() (*types.Config, error) {
 	config := &types.Config{}
 
-	// Load .env file (Optional)
-	// It's okay if .env doesn't exist
+	// Load .env file (optional — ok if absent)
 	_ = godotenv.Load()
 
-	// Set defaults before processing env vars
-	config.DockerChecks.CheckInterval = 300 // default 5 min
+	// Defaults applied before env vars so they can be overridden
+	config.SystemChecks.Interval = 60  // 60 seconds
+	config.DockerChecks.CheckInterval = 300 // 5 minutes
 
-	// Load from Environment Variables
+	// Load from environment variables
 	if err := envconfig.Process("MONIC", config); err != nil {
 		return nil, fmt.Errorf("failed to process environment variables: %w", err)
 	}
 
-	// Calculate enabled status based on environment variables
 	config = calculateEnabledStatus(config)
 
 	return config, nil
 }
 
-// calculateEnabledStatus determines which features are enabled based on environment variables
+// calculateEnabledStatus determines which features are enabled based on environment variables.
+// A feature's Enabled flag is only overridden when it is still false (not yet set by envconfig).
 func calculateEnabledStatus(config *types.Config) *types.Config {
-
-	// Only set enabled status if not already set by envconfig
 	if !config.Alerting.Email.Enabled {
 		config.Alerting.Email.Enabled = isEmailAlertingEnabled()
 	}
-
 	if !config.Alerting.Mailgun.Enabled {
 		config.Alerting.Mailgun.Enabled = isMailgunAlertingEnabled()
 	}
-
 	if !config.Alerting.Telegram.Enabled {
 		config.Alerting.Telegram.Enabled = isTelegramAlertingEnabled()
 	}
 
-	if !config.DockerChecks.Enabled {
-		config.DockerChecks.Enabled = isDockerChecksEnabled()
-	}
+	// Docker monitoring is always enabled; if the socket is unavailable
+	// InitDockerClient will log a warning and Docker monitoring is skipped.
+	config.DockerChecks.Enabled = true
 
 	if !config.HTTPServer.Enabled {
 		config.HTTPServer.Enabled = isHTTPServerEnabled()
 	}
-
 	if !config.Digest.Enabled {
 		config.Digest.Enabled = isDigestEnabled()
 	}
@@ -63,7 +58,6 @@ func calculateEnabledStatus(config *types.Config) *types.Config {
 	return config
 }
 
-// isEmailAlertingEnabled checks if email alerting environment variables are set
 func isEmailAlertingEnabled() bool {
 	return os.Getenv("MONIC_ALERTING_EMAIL_SMTP_HOST") != "" ||
 		os.Getenv("MONIC_ALERTING_EMAIL_SMTP_PORT") != "" ||
@@ -74,7 +68,6 @@ func isEmailAlertingEnabled() bool {
 		os.Getenv("MONIC_ALERTING_EMAIL_USE_TLS") != ""
 }
 
-// isMailgunAlertingEnabled checks if mailgun alerting environment variables are set
 func isMailgunAlertingEnabled() bool {
 	return os.Getenv("MONIC_ALERTING_MAILGUN_API_KEY") != "" ||
 		os.Getenv("MONIC_ALERTING_MAILGUN_DOMAIN") != "" ||
@@ -83,28 +76,18 @@ func isMailgunAlertingEnabled() bool {
 		os.Getenv("MONIC_ALERTING_MAILGUN_BASE_URL") != ""
 }
 
-// isTelegramAlertingEnabled checks if telegram alerting environment variables are set
 func isTelegramAlertingEnabled() bool {
 	return os.Getenv("MONIC_ALERTING_TELEGRAM_BOT_TOKEN") != "" ||
 		os.Getenv("MONIC_ALERTING_TELEGRAM_CHAT_ID") != ""
 }
 
-// isDockerChecksEnabled checks if Docker monitoring should be enabled.
-// Docker monitoring is enabled by default since Monic is a system-wide Docker monitor.
-// If the Docker socket is not available, InitDockerClient() will log a warning.
-func isDockerChecksEnabled() bool {
-	return true
-}
-
-// isHTTPServerEnabled checks if HTTP server environment variables are set
 func isHTTPServerEnabled() bool {
 	return os.Getenv("MONIC_HTTP_SERVER_PORT") != "" ||
 		os.Getenv("MONIC_HTTP_SERVER_USERNAME") != "" ||
 		os.Getenv("MONIC_HTTP_SERVER_PASSWORD") != ""
 }
 
-// isDigestEnabled checks if the daily digest is enabled.
-// The digest is enabled by default; set MONIC_DAILY_REPORT=false to disable.
+// isDigestEnabled returns true unless MONIC_DIGEST_ENABLED is explicitly set to "false".
 func isDigestEnabled() bool {
-	return os.Getenv("MONIC_DAILY_REPORT") != "false"
+	return os.Getenv("MONIC_DIGEST_ENABLED") != "false"
 }

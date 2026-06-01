@@ -86,7 +86,11 @@ func (r *HealthCheckRegistry) Remove(containerID string) {
 	if cancel, exists := r.containers[containerID]; exists {
 		cancel()
 		delete(r.containers, containerID)
-		slog.Debug("Stopped health check for container", "id", containerID[:12])
+		sid := containerID
+		if len(sid) > 12 {
+			sid = sid[:12]
+		}
+		slog.Debug("Stopped health check for container", "id", sid)
 	}
 }
 

@@ -12,14 +12,12 @@ func TestLoadConfig_EnvOnly(t *testing.T) {
 	os.Setenv("MONIC_CHECK_SYSTEM_CPU_THRESHOLD", "80")
 	os.Setenv("MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD", "85")
 	os.Setenv("MONIC_CHECK_SYSTEM_DISK_THRESHOLD", "90")
-	os.Setenv("MONIC_CHECK_SYSTEM_DISK_PATHS", "/,/tmp")
 	defer func() {
 		os.Unsetenv("MONIC_APP_NAME")
 		os.Unsetenv("MONIC_CHECK_SYSTEM_INTERVAL")
 		os.Unsetenv("MONIC_CHECK_SYSTEM_CPU_THRESHOLD")
 		os.Unsetenv("MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD")
 		os.Unsetenv("MONIC_CHECK_SYSTEM_DISK_THRESHOLD")
-		os.Unsetenv("MONIC_CHECK_SYSTEM_DISK_PATHS")
 	}()
 
 	// Test loading the config from environment variables
@@ -44,17 +42,12 @@ func TestLoadConfig_EnvOnly(t *testing.T) {
 	if config.SystemChecks.DiskThreshold != 90 {
 		t.Errorf("Expected disk threshold 90, got %d", config.SystemChecks.DiskThreshold)
 	}
-	if len(config.SystemChecks.DiskPaths) != 2 || config.SystemChecks.DiskPaths[0] != "/" || config.SystemChecks.DiskPaths[1] != "/tmp" {
-		t.Errorf("Expected disk paths ['/', '/tmp'], got %v", config.SystemChecks.DiskPaths)
-	}
 }
 
 func TestLoadConfig_DockerDiscoveryFromEnv(t *testing.T) {
 	// Set Docker discovery environment variables
 	os.Setenv("MONIC_CHECK_DOCKER_INTERVAL", "120")
-	defer func() {
-		os.Unsetenv("MONIC_CHECK_DOCKER_INTERVAL")
-	}()
+	defer os.Unsetenv("MONIC_CHECK_DOCKER_INTERVAL")
 
 	// Test loading the config
 	config, err := LoadConfig()
@@ -63,7 +56,7 @@ func TestLoadConfig_DockerDiscoveryFromEnv(t *testing.T) {
 	}
 
 	if config == nil {
-		t.Error("Expected config to be loaded successfully")
+		t.Fatal("Expected config to be loaded successfully")
 	}
 
 	if config.DockerChecks.CheckInterval != 120 {

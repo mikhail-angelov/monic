@@ -9,7 +9,7 @@ import (
 
 func TestNewSystemMonitor(t *testing.T) {
 	config := &types.SystemChecksConfig{
-		DiskPaths: []string{"/", "/tmp"},
+		
 		Interval:  60,
 	}
 
@@ -26,7 +26,7 @@ func TestNewSystemMonitor(t *testing.T) {
 
 func TestSystemMonitor_CollectStats(t *testing.T) {
 	config := &types.SystemChecksConfig{
-		DiskPaths: []string{"/"},
+		
 		Interval:  60,
 	}
 
@@ -72,7 +72,7 @@ func TestSystemMonitor_CollectStats(t *testing.T) {
 
 func TestSystemMonitor_CheckThresholds(t *testing.T) {
 	config := &types.SystemChecksConfig{
-		DiskPaths: []string{"/"},
+		
 		Interval:  60,
 	}
 
@@ -138,7 +138,7 @@ func TestSystemMonitor_CheckThresholds(t *testing.T) {
 
 func TestSystemMonitor_GetSystemInfo(t *testing.T) {
 	config := &types.SystemChecksConfig{
-		DiskPaths: []string{"/"},
+		
 		Interval:  60,
 	}
 
@@ -171,7 +171,7 @@ func TestSystemMonitor_GetSystemInfo(t *testing.T) {
 
 func TestSystemMonitor_InvalidDiskPath(t *testing.T) {
 	config := &types.SystemChecksConfig{
-		DiskPaths: []string{"/invalid/path/that/does/not/exist"},
+		
 		Interval:  60,
 	}
 

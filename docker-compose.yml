@@ -1,6 +1,6 @@
 services:
   monic:
-    build: .
+    image: ghcr.io/mikhail-angelov/monic:latest
     container_name: monic
     restart: unless-stopped
     privileged: true
@@ -9,20 +9,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     env_file:
       - ./.env
-    environment:
-      - MONIC_APP_NAME=Monic
-
-      # System monitoring
-      - MONIC_CHECK_SYSTEM_INTERVAL=60
-      - MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
-      - MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
-      - MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
-
-      # Docker discovery interval (default: 300 = 5 min)
-      - MONIC_CHECK_DOCKER_INTERVAL=300
-
-      # HTTP Server
-      - MONIC_HTTP_SERVER_PORT=8765
 
     logging:
       driver: "json-file"
@@ -30,4 +16,4 @@ services:
         max-size: "10m"
         max-file: "3"
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"

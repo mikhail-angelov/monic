@@ -20,7 +20,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 	}
 
 	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
-		DiskPaths:       []string{"/"},
+		
 		Interval:        60,
 		CPUThreshold:    75,
 		MemoryThreshold: 80,
@@ -66,7 +66,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 		Timestamp: time.Now(),
 	})
 
-	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Create a test request
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -158,7 +158,7 @@ func TestStatsServer_HandleStats_HTML(t *testing.T) {
 	}
 
 	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
-		DiskPaths:       []string{"/"},
+		
 		Interval:        60,
 		CPUThreshold:    75,
 		MemoryThreshold: 80,
@@ -166,7 +166,7 @@ func TestStatsServer_HandleStats_HTML(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Create a test request (default Accept header)
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -200,7 +200,7 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 	}
 
 	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
-		DiskPaths:       []string{"/"},
+		
 		Interval:        60,
 		CPUThreshold:    75,
 		MemoryThreshold: 80,
@@ -208,7 +208,7 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test without authentication
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -251,7 +251,7 @@ func TestStatsServer_NoAuthWhenDisabled(t *testing.T) {
 	}
 
 	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
-		DiskPaths:       []string{"/"},
+		
 		Interval:        60,
 		CPUThreshold:    75,
 		MemoryThreshold: 80,
@@ -259,7 +259,7 @@ func TestStatsServer_NoAuthWhenDisabled(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test without authentication when no credentials are configured
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -279,7 +279,7 @@ func TestStatsServer_MethodNotAllowed(t *testing.T) {
 	}
 
 	systemMonitor := monitor.NewSystemMonitor(&types.SystemChecksConfig{
-		DiskPaths:       []string{"/"},
+		
 		Interval:        60,
 		CPUThreshold:    75,
 		MemoryThreshold: 80,
@@ -287,7 +287,7 @@ func TestStatsServer_MethodNotAllowed(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil)
 
 	// Test with POST method (should be rejected)
 	req := httptest.NewRequest("POST", "/stats", http.NoBody)

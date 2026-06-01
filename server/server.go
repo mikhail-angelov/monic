@@ -1,6 +1,8 @@
 package server
 
 import (
+	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -16,18 +18,17 @@ type StatsServer struct {
 	config         *types.HTTPServerConfig
 	systemMonitor  *monitor.SystemMonitor
 	storage        Storage
-	stateManager   any // We'll use any to avoid circular dependency
 	startTime      time.Time
 	containerTrack *monitor.ContainerTracker
+	httpServer     *http.Server // nil when disabled
 }
 
 // NewStatsServer creates a new stats server instance
-func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, stateManager any, containerTrack *monitor.ContainerTracker) *StatsServer {
+func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, containerTrack *monitor.ContainerTracker) *StatsServer {
 	return &StatsServer{
 		config:         config,
 		systemMonitor:  systemMonitor,
 		storage:        storage,
-		stateManager:   stateManager,
 		startTime:      time.Now(),
 		containerTrack: containerTrack,
 	}
@@ -43,7 +44,7 @@ func (s *StatsServer) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats", s.basicAuth(s.handleStats))
 
-	server := &http.Server{
+	s.httpServer = &http.Server{
 		Addr:              fmt.Sprintf(":%d", s.config.Port),
 		Handler:           mux,
 		ReadHeaderTimeout: 30 * time.Second,
@@ -51,7 +52,7 @@ func (s *StatsServer) Start() error {
 
 	slog.Info("Starting HTTP stats server", "port", s.config.Port)
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("HTTP stats server failed", "error", err)
 		}
 	}()
@@ -59,10 +60,21 @@ func (s *StatsServer) Start() error {
 	return nil
 }
 
+// Stop gracefully shuts down the HTTP stats server.
+func (s *StatsServer) Stop() {
+	if s.httpServer == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.httpServer.Shutdown(ctx); err != nil {
+		slog.Error("HTTP stats server shutdown error", "error", err)
+	}
+}
+
 // basicAuth middleware for HTTP basic authentication
 func (s *StatsServer) basicAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth if no credentials are configured
 		if s.config.Username == "" || s.config.Password == "" {
 			next(w, r)
 			return
@@ -75,7 +87,10 @@ func (s *StatsServer) basicAuth(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if username != s.config.Username || password != s.config.Password {
+		// Constant-time comparison to prevent timing attacks
+		userMatch := subtle.ConstantTimeCompare([]byte(username), []byte(s.config.Username))
+		passMatch := subtle.ConstantTimeCompare([]byte(password), []byte(s.config.Password))
+		if userMatch != 1 || passMatch != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -93,37 +108,29 @@ func (s *StatsServer) handleStats(w http.ResponseWriter, r *http.Request) {
 
 	stats := s.getStatsResponse()
 
-	// Check if client explicitly requests JSON
 	if r.Header.Get("Accept") == "application/json" {
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(stats); err != nil {
 			slog.Error("Error encoding stats response", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
-			return
 		}
 		return
 	}
 
-	// Otherwise serve HTML
 	renderStatsHTML(w, stats)
 }
 
-// getStatsResponse builds the complete stats response
 func (s *StatsServer) getStatsResponse() map[string]any {
 	response := make(map[string]any)
 
-	// Service status
 	response["service_status"] = map[string]any{
 		"status":     "running",
 		"started_at": s.startTime.Format(time.RFC3339),
 		"uptime":     time.Since(s.startTime).String(),
 	}
 
-	// System information
-	systemInfo := s.systemMonitor.GetSystemInfo()
-	response["system_info"] = systemInfo
+	response["system_info"] = s.systemMonitor.GetSystemInfo()
 
-	// Current system stats
 	latestStats := s.storage.GetLatestSystemStats()
 	if latestStats != nil {
 		response["current_system_stats"] = map[string]any{
@@ -141,20 +148,15 @@ func (s *StatsServer) getStatsResponse() map[string]any {
 		response["current_system_stats"] = nil
 	}
 
-	// HTTP checks status
 	response["http_checks"] = s.getHTTPChecksStatus()
 
-	// Alert status
-	alertsCount := s.storage.GetAlertsCount()
 	response["alerts"] = map[string]any{
-		"active_alerts": alertsCount,
+		"active_alerts": s.storage.GetAlertsCount(),
 		"recent_alerts": s.getRecentAlerts(),
 	}
 
-	// Monitoring thresholds (from system monitor)
 	response["thresholds"] = s.systemMonitor.GetThresholds()
 
-	// Container statuses
 	if s.containerTrack != nil {
 		response["containers"] = map[string]any{
 			"summary": s.containerTrack.GetSummary(),
@@ -165,16 +167,12 @@ func (s *StatsServer) getStatsResponse() map[string]any {
 	return response
 }
 
-// getHTTPChecksStatus returns the status of all HTTP checks
 func (s *StatsServer) getHTTPChecksStatus() []map[string]any {
 	httpHistory := s.storage.GetHTTPCheckResults()
 	if len(httpHistory) == 0 {
 		return []map[string]any{}
 	}
 
-	checks := make([]map[string]any, 0, len(httpHistory))
-
-	// Group HTTP results by name to get latest status
 	latestResults := make(map[string]types.HTTPCheckResult)
 	for _, result := range httpHistory {
 		if existing, exists := latestResults[result.Name]; !exists || result.Timestamp.After(existing.Timestamp) {
@@ -182,7 +180,6 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]any {
 		}
 	}
 
-	// Find last failure for each check
 	lastFailures := make(map[string]time.Time)
 	for _, result := range httpHistory {
 		if !result.Success {
@@ -192,7 +189,7 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]any {
 		}
 	}
 
-	// Build response for each check
+	checks := make([]map[string]any, 0, len(latestResults))
 	for name, result := range latestResults {
 		check := map[string]any{
 			"name":          name,
@@ -202,46 +199,38 @@ func (s *StatsServer) getHTTPChecksStatus() []map[string]any {
 			"response_time": result.ResponseTime.String(),
 			"status_code":   result.StatusCode,
 		}
-
 		if !result.Success {
 			check["status"] = "failed"
 			check["error"] = result.Error
 		}
-
 		if lastFailure, exists := lastFailures[name]; exists {
 			check["last_failure"] = lastFailure.Format(time.RFC3339)
 		}
-
 		checks = append(checks, check)
 	}
 
 	return checks
 }
 
-// getRecentAlerts returns recent alerts
 func (s *StatsServer) getRecentAlerts() []map[string]any {
-	var recentAlerts []map[string]any
-
 	alerts := s.storage.GetAlerts()
 	if len(alerts) == 0 {
-		return recentAlerts
+		return nil
 	}
 
-	// Get last 10 alerts (or all if less than 10)
 	start := 0
 	if len(alerts) > 10 {
 		start = len(alerts) - 10
 	}
 
-	for i := start; i < len(alerts); i++ {
-		alert := alerts[i]
-		recentAlerts = append(recentAlerts, map[string]any{
+	recent := make([]map[string]any, 0, len(alerts)-start)
+	for _, alert := range alerts[start:] {
+		recent = append(recent, map[string]any{
 			"type":      alert.Type,
 			"message":   alert.Message,
 			"level":     alert.Level,
 			"timestamp": alert.Timestamp.Format(time.RFC3339),
 		})
 	}
-
-	return recentAlerts
+	return recent
 }

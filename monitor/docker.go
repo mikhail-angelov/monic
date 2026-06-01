@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -16,9 +15,6 @@ type ContainerStatus struct {
 	PrevRunning       bool
 	CurrentRunning    bool
 	CheckType         string
-	ConsecutiveFails  int
-	FailedSince       time.Time
-	LastRecovery      time.Time
 	SentCriticalAlert bool
 }
 
@@ -36,7 +32,7 @@ func NewContainerTracker() *ContainerTracker {
 }
 
 // UpdateFromEvent processes a container discovery event and returns alerts.
-func (ct *ContainerTracker) UpdateFromEvent(containerID string, name, customName string, running bool, checkType string) []types.Alert {
+func (ct *ContainerTracker) UpdateFromEvent(containerID, name, customName string, running bool, checkType string) []types.Alert {
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 
@@ -149,14 +145,18 @@ func (ct *ContainerTracker) GetContainerStatuses() []map[string]any {
 
 	result := make([]map[string]any, 0, len(ct.containers))
 	for id, s := range ct.containers {
+		sid := id
+		if len(sid) > 12 {
+			sid = sid[:12]
+		}
 		result = append(result, map[string]any{
-			"id":            id[:12],
-			"name":          s.Name,
-			"custom_name":   s.CustomName,
-			"display_name":  ct.displayName(s.Name, s.CustomName),
-			"running":       s.CurrentRunning,
-			"check_type":    s.CheckType,
-			"active_alert":  !s.CurrentRunning && s.SentCriticalAlert,
+			"id":           sid,
+			"name":         s.Name,
+			"custom_name":  s.CustomName,
+			"display_name": ct.displayName(s.Name, s.CustomName),
+			"running":      s.CurrentRunning,
+			"check_type":   s.CheckType,
+			"active_alert": !s.CurrentRunning && s.SentCriticalAlert,
 		})
 	}
 	return result
@@ -167,12 +167,4 @@ func (ct *ContainerTracker) displayName(name, customName string) string {
 		return fmt.Sprintf("%s (%s)", customName, name)
 	}
 	return name
-}
-
-// Refactored: moved DockerContainerStats types to types.go.
-// The old DockerMonitor and SimpleDockerMonitor are replaced by discovery.Watcher + ContainerTracker.
-
-// Ensure backwards compatibility with importers
-func init() {
-	slog.Debug("Using new discovery-based Docker monitoring")
 }
