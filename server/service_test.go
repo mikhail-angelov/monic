@@ -16,7 +16,6 @@ func createTestMonitorService(t *testing.T, config *types.Config) *MonitorServic
 
 	systemMonitor := monitor.NewSystemMonitor(&config.SystemChecks)
 	httpMonitor := monitor.NewHTTPMonitor()
-	dockerMonitor := monitor.NewDockerMonitor(&config.DockerChecks)
 	alertManager := alert.NewManager(&config.Alerting, config.AppName)
 	stateManager := alert.NewStateManager()
 	storage := NewStorageManager(100)
@@ -32,11 +31,12 @@ func createTestMonitorService(t *testing.T, config *types.Config) *MonitorServic
 		config,
 		systemMonitor,
 		httpMonitor,
-		dockerMonitor,
 		alertManager,
 		stateManager,
 		storage,
 		statsServer,
+		nil, // dockerWatcher
+		nil, // healthRegistry
 	)
 }
 
@@ -49,12 +49,8 @@ func TestNewMonitorService(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: types.HTTPCheck{
-			URL:            "http://localhost:8080/health",
-			Method:         "GET",
-			Timeout:        10,
-			ExpectedStatus: 200,
-			CheckInterval:  30,
+		DockerChecks: types.DockerConfig{
+			CheckInterval: 300,
 		},
 	}
 
@@ -99,8 +95,7 @@ func TestMonitorService_GetDiskUsageSummary(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: types.HTTPCheck{},
-	}
+	}	
 
 	service := createTestMonitorService(t, config)
 
@@ -141,8 +136,7 @@ func TestMonitorService_GetDiskUsageSummary_Empty(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: types.HTTPCheck{},
-	}
+	}	
 
 	service := createTestMonitorService(t, config)
 
@@ -208,8 +202,7 @@ func TestMonitorService_ProcessAlerts(t *testing.T) {
 			DiskThreshold:   90,
 			DiskPaths:       []string{"/"},
 		},
-		HTTPChecks: types.HTTPCheck{},
-	}
+	}	
 
 	service := createTestMonitorService(t, config)
 

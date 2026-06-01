@@ -20,9 +20,10 @@ Pure **vibe-coded** lightweight monitoring service written in Go that runs in Do
   - Concurrent checking (internal support)
 
 - **Docker Container Monitoring**
-  - Monitor Docker container status and resource usage
-  - Track running/stopped containers
-  - Configurable container filtering
+  - Automatic label-based container discovery via Docker API
+  - Containers with `monic.enabled=true` labels are auto-detected
+  - Per-container HTTP health checks via `monic.check_http_url` label
+  - Real-time status tracking (running/stopped) with alerts
   - Works inside Docker containers while monitoring the host
 
 - **Advanced Alerting System**
@@ -113,13 +114,6 @@ MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
 MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
 MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
 
-# HTTP Monitoring
-MONIC_CHECK_HTTP_URL="https://google.com"
-MONIC_CHECK_HTTP_METHOD="GET"
-MONIC_CHECK_HTTP_TIMEOUT=5
-MONIC_CHECK_HTTP_EXPECTED_STATUS=200
-MONIC_CHECK_HTTP_INTERVAL=30
-
 # HTTP Server (Stats Endpoint)
 MONIC_HTTP_SERVER_PORT=8080
 MONIC_HTTP_SERVER_USERNAME="admin"
@@ -145,9 +139,8 @@ MONIC_ALERTING_MAILGUN_BASE_URL="https://api.mailgun.net/v3"
 MONIC_ALERTING_TELEGRAM_BOT_TOKEN="your-bot-token"
 MONIC_ALERTING_TELEGRAM_CHAT_ID="your-chat-id"
 
-# Docker Monitoring
-MONIC_CHECK_DOCKER_INTERVAL=60
-MONIC_CHECK_DOCKER_CONTAINERS="container1,container2"
+# Docker Discovery (label-based, v2)
+MONIC_CHECK_DOCKER_INTERVAL=300
 ```
 
 ### Configuration Options
@@ -159,12 +152,8 @@ MONIC_CHECK_DOCKER_CONTAINERS="container1,container2"
   - `DISK_THRESHOLD`: Disk usage percentage threshold for alerts (default: 90)
   - **Note**: Disk monitoring now only checks the root path ("/") for simplicity
 
-- **HTTP Monitoring** (`MONIC_CHECK_HTTP_*`)
-  - `URL`: Target URL to monitor
-  - `METHOD`: HTTP method (GET, POST, etc.)
-  - `TIMEOUT`: Request timeout in seconds
-  - `EXPECTED_STATUS`: Expected HTTP status code (e.g., 200)
-  - `INTERVAL`: Check interval in seconds
+### Docker Discovery (`MONIC_CHECK_DOCKER_*`)
+  - `INTERVAL`: Polling interval in seconds (default: 300 = 5 min). Docker containers are discovered automatically via labels.
 
 - **HTTP Server** (`MONIC_HTTP_SERVER_*`)
   - `PORT`: HTTP server port for stats endpoint (default: 8080)
@@ -197,6 +186,44 @@ MONIC_CHECK_DOCKER_CONTAINERS="container1,container2"
   - `CONTAINERS`: Comma-separated list of specific containers to monitor (empty for all)
 
 ## Docker Configuration
+
+### Label-Based Discovery (v2)
+
+Monic automatically discovers containers by polling the Docker API. Only containers with `monic.enabled=true` label are monitored. Add labels to any Docker container:
+
+```yaml
+labels:
+  monic.enabled: "true"                    # Required: enable monitoring
+  monic.check: "container"                 # Check type: "container" (status) or "http" (with health check)
+  monic.check_http_url: "https://..."      # External URL for HTTP health check (optional)
+  monic.check_http_interval: "30"          # Seconds between HTTP checks (default: 30)
+  monic.check_http_timeout: "5"            # HTTP timeout in seconds (default: 5)  
+  monic.check_http_expected: "200"         # Expected HTTP status code (default: 200)
+  monic.name: "My Service"                 # Human-friendly name (optional, fallback: container name)
+```
+
+#### Examples
+
+Monitor only container status:
+```yaml
+services:
+  postgres:
+    image: postgres:16
+    labels:
+      monic.enabled: "true"
+```
+
+Monitor status + HTTP health check:
+```yaml
+services:
+  my-app:
+    image: my-app:latest
+    labels:
+      monic.enabled: "true"
+      monic.check: "http"
+      monic.check_http_url: "https://example.com/api/health"
+      monic.name: "My Web App"
+```
 
 ### Host Monitoring
 
@@ -264,10 +291,12 @@ ALERT [critical] http_local_service: HTTP check failed for local_service: connec
 ├── main.go                 # Main application entry point
 ├── types/
 │   └── types.go            # Data structures and types
+./discovery/
+│   └── watcher.go          # Docker label-based container discovery
 ├── monitor/
 │   ├── system.go           # System resource monitoring
-│   ├── http.go             # HTTP endpoint monitoring
-│   └── docker_simple.go    # Docker container monitoring
+│   ├── http.go             # HTTP endpoint monitoring + health check registry
+│   └── docker.go           # Container status tracker and alerting
 ├── alert/
 │   ├── alert.go            # Alert management and sending
 │   └── state_manager.go    # Alert state tracking

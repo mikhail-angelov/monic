@@ -49,19 +49,11 @@ func TestLoadConfig_EnvOnly(t *testing.T) {
 	}
 }
 
-func TestLoadConfig_HTTPCheckFromEnv(t *testing.T) {
-	// Set HTTP check environment variables
-	os.Setenv("MONIC_CHECK_HTTP_URL", "http://localhost:8080/health")
-	os.Setenv("MONIC_CHECK_HTTP_METHOD", "GET")
-	os.Setenv("MONIC_CHECK_HTTP_TIMEOUT", "10")
-	os.Setenv("MONIC_CHECK_HTTP_EXPECTED_STATUS", "200")
-	os.Setenv("MONIC_CHECK_HTTP_INTERVAL", "30")
+func TestLoadConfig_DockerDiscoveryFromEnv(t *testing.T) {
+	// Set Docker discovery environment variables
+	os.Setenv("MONIC_CHECK_DOCKER_INTERVAL", "120")
 	defer func() {
-		os.Unsetenv("MONIC_CHECK_HTTP_URL")
-		os.Unsetenv("MONIC_CHECK_HTTP_METHOD")
-		os.Unsetenv("MONIC_CHECK_HTTP_TIMEOUT")
-		os.Unsetenv("MONIC_CHECK_HTTP_EXPECTED_STATUS")
-		os.Unsetenv("MONIC_CHECK_HTTP_INTERVAL")
+		os.Unsetenv("MONIC_CHECK_DOCKER_INTERVAL")
 	}()
 
 	// Test loading the config
@@ -70,11 +62,12 @@ func TestLoadConfig_HTTPCheckFromEnv(t *testing.T) {
 		t.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Note: HTTP checks are not currently loaded from environment variables
-	// This test verifies that the config loads without errors when HTTP check env vars are present
-	// The actual HTTP check loading would need to be implemented separately
 	if config == nil {
 		t.Error("Expected config to be loaded successfully")
+	}
+
+	if config.DockerChecks.CheckInterval != 120 {
+		t.Errorf("Expected Docker check interval 120, got %d", config.DockerChecks.CheckInterval)
 	}
 }
 
