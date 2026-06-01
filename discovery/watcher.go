@@ -178,7 +178,7 @@ func (w *Watcher) poll(ctx context.Context) {
 
 // listContainers fetches all containers via the Docker API over Unix socket.
 func (w *Watcher) listContainers(ctx context.Context) ([]dockerContainer, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost/v1.47/containers/json?all=true", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost/containers/json?all=true", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -323,7 +323,7 @@ func InitDockerClient() (*http.Client, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost/v1.47/_ping", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost/_ping", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ping request: %w", err)
 	}
