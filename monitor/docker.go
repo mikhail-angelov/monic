@@ -44,11 +44,12 @@ func (ct *ContainerTracker) UpdateFromEvent(containerID string, name, customName
 	if !exists {
 		// New container
 		ct.containers[containerID] = &ContainerStatus{
-			Name:           name,
-			CustomName:     customName,
-			PrevRunning:    running,
-			CurrentRunning: running,
-			CheckType:      checkType,
+			Name:              name,
+			CustomName:        customName,
+			PrevRunning:       running,
+			CurrentRunning:    running,
+			CheckType:         checkType,
+			SentCriticalAlert: !running,
 		}
 		if !running {
 			return []types.Alert{{
@@ -72,6 +73,7 @@ func (ct *ContainerTracker) UpdateFromEvent(containerID string, name, customName
 
 	if status.PrevRunning && !status.CurrentRunning {
 		// Running → stopped: critical alert
+		status.SentCriticalAlert = true
 		alerts = append(alerts, types.Alert{
 			Type:      "docker",
 			Message:   fmt.Sprintf("Container %s stopped", ct.displayName(name, customName)),
@@ -80,6 +82,7 @@ func (ct *ContainerTracker) UpdateFromEvent(containerID string, name, customName
 		})
 	} else if !status.PrevRunning && status.CurrentRunning {
 		// Stopped → running: recovery
+		status.SentCriticalAlert = false
 		alerts = append(alerts, types.Alert{
 			Type:      "docker",
 			Message:   fmt.Sprintf("Container %s recovered (now running)", ct.displayName(name, customName)),
@@ -104,6 +107,7 @@ func (ct *ContainerTracker) Remove(containerID string) []types.Alert {
 	delete(ct.containers, containerID)
 
 	if status.CurrentRunning {
+		status.SentCriticalAlert = true
 		return []types.Alert{{
 			Type:      "docker",
 			Message:   fmt.Sprintf("Container %s disappeared from monitoring (was running)", ct.displayName(status.Name, status.CustomName)),

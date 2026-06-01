@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"log/slog"
 	"os"
 
 	"bconf.com/monic/types"
@@ -87,15 +86,10 @@ func isTelegramAlertingEnabled() bool {
 }
 
 // isDockerChecksEnabled checks if Docker monitoring should be enabled.
-// Docker monitoring is enabled by default since Monic is meant to be a system-wide Docker monitor.
+// Docker monitoring is enabled by default since Monic is a system-wide Docker monitor.
+// If the Docker socket is not available, InitDockerClient() will log a warning.
 func isDockerChecksEnabled() bool {
-	// Docker monitoring is enabled by default when running as a container with docker.sock mounted
-	port := os.Getenv("MONIC_HTTP_SERVER_PORT")
-	if port != "" {
-		return true // explicit presence of any config means enabled
-	}
-	slog.Warn("Docker monitoring disabled: no explicit configuration found. Set MONIC_CHECK_DOCKER_INTERVAL to enable.")
-	return false
+	return true
 }
 
 // isHTTPServerEnabled checks if HTTP server environment variables are set

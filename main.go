@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"os"
@@ -81,7 +80,7 @@ func main() {
 
 			service.SetDockerWatcher(watcher)
 			service.SetHealthRegistry(healthRegistry)
-			statsServer.SetContainerTracker(monitor.NewContainerTracker())
+			statsServer.SetContainerTracker(service.ContainerTracker())
 		}
 	} else {
 		slog.Warn("Docker monitoring disabled")
@@ -95,8 +94,6 @@ func main() {
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	// prevent unused variable
-	_ = context.Background()
 
 	<-sigChan
 	service.Stop()

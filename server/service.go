@@ -67,6 +67,11 @@ func (ms *MonitorService) SetHealthRegistry(r *monitor.HealthCheckRegistry) {
 	ms.healthRegistry = r
 }
 
+// ContainerTracker returns the container tracker used by the service.
+func (ms *MonitorService) ContainerTracker() *monitor.ContainerTracker {
+	return ms.containerTrack
+}
+
 // Start begins the monitoring service
 func (ms *MonitorService) Start() error {
 	slog.Info("Starting Monic monitoring service...")
@@ -86,10 +91,11 @@ func (ms *MonitorService) Start() error {
 	slog.Info("System Info", "info", systemInfo)
 
 	// Start monitoring goroutines
-	ms.wg.Add(3)
+	ms.wg.Add(4)
 	go ms.systemMonitoringLoop()
 	go ms.dockerWatcherLoop()
 	go ms.healthCheckLoop()
+	go ms.alertProcessingLoop()
 
 	slog.Info("Monic monitoring service started successfully")
 	return nil
@@ -214,10 +220,6 @@ func (ms *MonitorService) healthCheckLoop() {
 		return
 	}
 
-	// Also run periodic alert processing
-	alertTicker := time.NewTicker(60 * time.Second)
-	defer alertTicker.Stop()
-
 	for {
 		select {
 		case <-ms.stopChan:
@@ -242,7 +244,22 @@ func (ms *MonitorService) healthCheckLoop() {
 				"status", status,
 				"code", result.StatusCode,
 				"time_ms", result.ResponseTime.Milliseconds())
+		}
+	}
+}
 
+// alertProcessingLoop periodically processes and sends stored alerts.
+// This runs independently of Docker/health check status so system alerts always get dispatched.
+func (ms *MonitorService) alertProcessingLoop() {
+	defer ms.wg.Done()
+
+	alertTicker := time.NewTicker(60 * time.Second)
+	defer alertTicker.Stop()
+
+	for {
+		select {
+		case <-ms.stopChan:
+			return
 		case <-alertTicker.C:
 			ms.processAlerts()
 		}
