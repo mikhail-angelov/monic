@@ -145,15 +145,15 @@ func TestBuildDigest_WithData(t *testing.T) {
 		t.Error("Expected 'SYSTEM HEALTH' section")
 	}
 	if !strings.Contains(result, "peak 95.0%") {
-		t.Errorf("Expected 'peak 95.0%', got: %s", result)
+		t.Error("Expected 'peak 95.0%' in digest")
 	}
 	if !strings.Contains(result, "current 45.0%") {
-		t.Errorf("Expected 'current 45.0%', got: %s", result)
+		t.Error("Expected 'current 45.0%' in digest")
 	}
 
 	// Check thresholds
 	if !strings.Contains(result, "CPU: > 90%") {
-		t.Errorf("Expected threshold 'CPU: > 90%', got: %s", result)
+		t.Error("Expected threshold 'CPU: > 90%' in digest")
 	}
 
 	t.Logf("Digest output:\n%s", result)
