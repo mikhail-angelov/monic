@@ -12,16 +12,21 @@ import (
 // DigestService builds daily status digest reports.
 type DigestService struct {
 	storage       Storage
-	systemMonitor *monitor.SystemMonitor
+	systemMonitor systemMonitor
 	dockerMonitor *monitor.DockerMonitor
 	appName       string
+}
+
+// systemMonitor is an interface for what DigestService needs from the system monitor.
+type systemMonitor interface {
+	GetThresholds() map[string]any
 }
 
 // NewDigestService creates a new digest service.
 // dockerMonitor can be nil if Docker monitoring is disabled.
 func NewDigestService(
 	storage Storage,
-	systemMonitor *monitor.SystemMonitor,
+	systemMonitor systemMonitor,
 	dockerMonitor *monitor.DockerMonitor,
 	appName string,
 ) *DigestService {
