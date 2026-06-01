@@ -103,7 +103,8 @@ func isHTTPServerEnabled() bool {
 		os.Getenv("MONIC_HTTP_SERVER_PASSWORD") != ""
 }
 
-// isDigestEnabled checks if the daily digest schedule is configured.
+// isDigestEnabled checks if the daily digest is enabled.
+// The digest is enabled by default; set MONIC_DAILY_REPORT=false to disable.
 func isDigestEnabled() bool {
-	return os.Getenv("MONIC_DIGEST_SCHEDULE") != ""
+	return os.Getenv("MONIC_DAILY_REPORT") != "false"
 }

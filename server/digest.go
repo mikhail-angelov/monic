@@ -123,18 +123,19 @@ func (ds *DigestService) writeHTTPSection(b *strings.Builder, cutoff time.Time) 
 	passed := 0
 	failed := 0
 
-	// Track latest status per check name
+	// Track latest status per check name (24h only)
 	latest := make(map[string]bool)
 	for _, r := range results {
+		if !r.Timestamp.After(cutoff) {
+			continue
+		}
 		total++
 		if r.Success {
 			passed++
 		} else {
 			failed++
 		}
-		if r.Timestamp.After(cutoff) {
-			latest[r.Name] = r.Success
-		}
+		latest[r.Name] = r.Success
 	}
 
 	if total == 0 {
@@ -178,9 +179,9 @@ func (ds *DigestService) writeSystemSection(b *strings.Builder, cutoff time.Time
 			if s.MemoryUsage.UsedPercent > peakMem {
 				peakMem = s.MemoryUsage.UsedPercent
 			}
-			for path, ds := range s.DiskUsage {
-				if ds.UsedPercent > peakDisk[path] {
-					peakDisk[path] = ds.UsedPercent
+			for path, diskStat := range s.DiskUsage {
+				if diskStat.UsedPercent > peakDisk[path] {
+					peakDisk[path] = diskStat.UsedPercent
 				}
 			}
 			current = &stats[i]
@@ -224,15 +225,4 @@ func (ds *DigestService) writeSystemSection(b *strings.Builder, cutoff time.Time
 		}
 	}
 	b.WriteString("\n")
-}
-
-// FormatDigestForAlert creates a single Alert carrying the digest body.
-// The alert.Manager will route it through all configured channels.
-func FormatDigestForAlert(digestText string) types.Alert {
-	return types.Alert{
-		Type:      "digest",
-		Message:   digestText,
-		Level:     "info",
-		Timestamp: time.Now(),
-	}
 }

@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"time"
 
@@ -490,26 +491,21 @@ func (am *Manager) sendDigestMailgun(appName, digestText string) error {
 
 	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
 
-	reqBody := map[string]string{
-		"from":    mailgunConfig.From,
-		"to":      mailgunConfig.To,
-		"subject": subject,
-		"text":    digestText,
-	}
-
-	jsonBody, err := json.Marshal(reqBody)
-	if err != nil {
-		return fmt.Errorf("failed to marshal Mailgun request: %w", err)
-	}
+	// Mailgun /messages expects application/x-www-form-urlencoded, not JSON
+	form := url.Values{}
+	form.Set("from", mailgunConfig.From)
+	form.Set("to", mailgunConfig.To)
+	form.Set("subject", subject)
+	form.Set("text", digestText)
 
 	url := fmt.Sprintf("%s/%s/messages", baseURL, mailgunConfig.Domain)
-	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	req, err := http.NewRequest("POST", url, strings.NewReader(form.Encode()))
 	if err != nil {
 		return fmt.Errorf("failed to create Mailgun request: %w", err)
 	}
 
 	req.SetBasicAuth("api", mailgunConfig.APIKey)
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
@@ -540,22 +536,22 @@ func (am *Manager) sendDigestTelegram(appName, digestText string) error {
 		return fmt.Errorf("invalid Telegram bot token format")
 	}
 
-	// Telegram has a 4096 character limit per message
+	// Telegram has a 4096 character limit per message (runes, not bytes)
 	const maxLen = 4000
 	message := fmt.Sprintf("<b>%s Daily Digest</b>\n%s", appName, time.Now().Format("2006-01-02"))
 	message += "\n\n<pre>"
 	message += escapeTelegramHTML(digestText)
 	message += "</pre>"
 
-	if len(message) <= maxLen {
+	if len([]rune(message)) <= maxLen {
 		return am.sendTelegramMessage(telegramConfig, message)
 	}
 
-	// Split into multiple messages
+	// Split into multiple messages by lines, counting runes not bytes
 	lines := strings.Split(digestText, "\n")
 	var part string
 	for _, line := range lines {
-		if len(part)+len(line)+1 > maxLen-100 {
+		if len([]rune(part))+len([]rune(line))+1 > maxLen-100 {
 			if err := am.sendTelegramMessage(telegramConfig, "<pre>"+escapeTelegramHTML(part)+"</pre>"); err != nil {
 				return err
 			}

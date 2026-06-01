@@ -88,7 +88,7 @@ func (ms *MonitorService) Start() error {
 	slog.Info("System Info", "info", systemInfo)
 
 	// Start monitoring goroutines
-	ms.wg.Add(4)
+	ms.wg.Add(5)
 	go ms.systemMonitoringLoop()
 	go ms.dockerWatcherLoop()
 	go ms.healthCheckLoop()
@@ -269,7 +269,7 @@ func (ms *MonitorService) alertProcessingLoop() {
 	}
 }
 
-// digestLoop sends a daily digest on the configured schedule.
+// digestLoop sends a daily digest at midnight UTC every day.
 // If no digest service is configured, this loop returns immediately.
 func (ms *MonitorService) digestLoop() {
 	defer ms.wg.Done()
@@ -278,32 +278,24 @@ func (ms *MonitorService) digestLoop() {
 		return
 	}
 
-	schedule := ms.config.Digest.Schedule
-	if schedule == "" {
-		return
+	slog.Info("Daily digest scheduled, next at midnight UTC")
+
+	// Calculate time until next midnight UTC
+	now := time.Now().UTC()
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if !nextMidnight.After(now) {
+		nextMidnight = nextMidnight.Add(24 * time.Hour)
 	}
 
-	interval, err := time.ParseDuration(schedule)
-	if err != nil {
-		slog.Warn("Invalid digest schedule, disabling digest", "schedule", schedule, "error", err)
-		return
-	}
-
-	if interval <= 0 {
-		slog.Warn("Digest schedule must be positive, disabling", "schedule", schedule)
-		return
-	}
-
-	slog.Info("Daily digest scheduled", "interval", interval.String())
-
-	// Wait the full interval before first digest so the system has data
+	// Wait until next midnight
 	select {
 	case <-ms.stopChan:
 		return
-	case <-time.After(interval):
+	case <-time.After(nextMidnight.Sub(now)):
 	}
 
-	ticker := time.NewTicker(interval)
+	// Fire at midnight, then every 24h
+	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
 	for {

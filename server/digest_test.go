@@ -236,17 +236,5 @@ func TestBuildDigest_WithContainerTracker(t *testing.T) {
 	if !strings.Contains(result, "Stopped: 1") {
 		t.Errorf("Expected Stopped: 1, got: %s", result)
 	}
-}
-
-func TestFormatDigestForAlert(t *testing.T) {
-	alert := FormatDigestForAlert("test digest body")
-	if alert.Type != "digest" {
-		t.Errorf("Expected type 'digest', got '%s'", alert.Type)
-	}
-	if alert.Level != "info" {
-		t.Errorf("Expected level 'info', got '%s'", alert.Level)
-	}
-	if alert.Message != "test digest body" {
-		t.Errorf("Expected message 'test digest body', got '%s'", alert.Message)
-	}
+	t.Logf("Digest output:\n%s", result)
 }

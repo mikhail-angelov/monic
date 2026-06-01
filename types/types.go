@@ -195,6 +195,5 @@ type HTTPServerConfig struct {
 
 // DigestConfig contains daily digest settings
 type DigestConfig struct {
-	Enabled  bool
-	Schedule string `envconfig:"SCHEDULE"` // cron expression or "24h"; empty = no digest
+	Enabled bool // enabled by default; set MONIC_DAILY_REPORT=false to disable
 }
