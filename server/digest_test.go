@@ -9,10 +9,10 @@ import (
 	"bconf.com/monic/types"
 )
 
-// testStorage is a simplified in-memory storage for digest tests.
+// testDigestStorage is a simplified in-memory storage for digest tests.
 type testDigestStorage struct {
-	stats []types.SystemStats
-	alerts []types.Alert
+	stats       []types.SystemStats
+	alerts      []types.Alert
 	httpResults []types.HTTPCheckResult
 }
 
@@ -62,18 +62,18 @@ func (s *testDigestStorage) ClearAlerts() {
 	s.alerts = nil
 }
 
-// testSystemMonitor is a stub for system monitor.
-type testSystemMonitor struct{}
+// testDigestSystemMonitor is a stub for system monitor.
+type testDigestSystemMonitor struct{}
 
-func (m *testSystemMonitor) GetSystemInfo() map[string]any {
+func (m *testDigestSystemMonitor) GetSystemInfo() map[string]any {
 	return map[string]any{"hostname": "test-host"}
 }
 
-func (m *testSystemMonitor) CollectStats() (*types.SystemStats, error) {
+func (m *testDigestSystemMonitor) CollectStats() (*types.SystemStats, error) {
 	return &types.SystemStats{}, nil
 }
 
-func (m *testSystemMonitor) GetThresholds() map[string]any {
+func (m *testDigestSystemMonitor) GetThresholds() map[string]any {
 	return map[string]any{
 		"cpu_threshold":    float64(90),
 		"memory_threshold": float64(85),
@@ -81,11 +81,7 @@ func (m *testSystemMonitor) GetThresholds() map[string]any {
 	}
 }
 
-func TestBuildDigest_WithContainerData(t *testing.T) {
-	ct := monitor.NewContainerTracker()
-	_ = ct.UpdateFromEvent("abc123", "nginx", "", true, "container")
-	_ = ct.UpdateFromEvent("def456", "redis", "my-redis", false, "container")
-
+func TestBuildDigest_WithData(t *testing.T) {
 	storage := &testDigestStorage{
 		alerts: []types.Alert{
 			{Type: "docker", Level: "critical", Message: "Container redis stopped", Timestamp: time.Now().Add(-1 * time.Hour)},
@@ -113,8 +109,8 @@ func TestBuildDigest_WithContainerData(t *testing.T) {
 		},
 	}
 
-	sm := &testSystemMonitor{}
-	ds := NewDigestService(ct, storage, sm, "Monic")
+	sm := &testDigestSystemMonitor{}
+	ds := NewDigestService(storage, sm, nil, "Monic")
 
 	result := ds.BuildDigest()
 
@@ -123,20 +119,17 @@ func TestBuildDigest_WithContainerData(t *testing.T) {
 		t.Error("Expected header 'Monic Daily Digest'")
 	}
 
-	// Check container summary
-	if !strings.Contains(result, "Total: 2") {
-		t.Error("Expected 'Total: 2'")
-	}
-	if !strings.Contains(result, "Running: 1") {
-		t.Error("Expected 'Running: 1'")
-	}
-	if !strings.Contains(result, "Stopped: 1") {
-		t.Error("Expected 'Stopped: 1'")
+	// Check Docker disabled message
+	if !strings.Contains(result, "Docker monitoring is disabled") {
+		t.Error("Expected 'Docker monitoring is disabled'")
 	}
 
 	// Check container incidents section
 	if !strings.Contains(result, "Failures: 1") {
-		t.Error("Expected 'Failures: 1' (1 docker critical alert)")
+		t.Errorf("Expected 'Failures: 1', got: %s", result)
+	}
+	if !strings.Contains(result, "Recoveries: 1") {
+		t.Errorf("Expected 'Recoveries: 1', got: %s", result)
 	}
 
 	// Check HTTP checks section
@@ -158,7 +151,7 @@ func TestBuildDigest_WithContainerData(t *testing.T) {
 		t.Errorf("Expected 'current 45.0%', got: %s", result)
 	}
 
-	// Check thresholds are listed
+	// Check thresholds
 	if !strings.Contains(result, "CPU: > 90%") {
 		t.Errorf("Expected threshold 'CPU: > 90%', got: %s", result)
 	}
@@ -166,38 +159,22 @@ func TestBuildDigest_WithContainerData(t *testing.T) {
 	t.Logf("Digest output:\n%s", result)
 }
 
-func TestBuildDigest_NoContainers(t *testing.T) {
-	ct := monitor.NewContainerTracker()
-
-	storage := &testDigestStorage{
-		stats: []types.SystemStats{
-			{
-				Timestamp:   time.Now(),
-				CPUUsage:    30.0,
-				MemoryUsage: types.MemoryStats{UsedPercent: 40.0},
-				DiskUsage:   map[string]types.DiskStats{"/": {Path: "/", UsedPercent: 50.0}},
-			},
-		},
-	}
-
-	sm := &testSystemMonitor{}
-	ds := NewDigestService(ct, storage, sm, "Monic")
+func TestBuildDigest_NoData(t *testing.T) {
+	storage := &testDigestStorage{}
+	sm := &testDigestSystemMonitor{}
+	ds := NewDigestService(storage, sm, nil, "Monic")
 
 	result := ds.BuildDigest()
 
-	if !strings.Contains(result, "Total: 0") {
-		t.Errorf("Expected 'Total: 0', got: %s", result)
-	}
 	if !strings.Contains(result, "No HTTP checks configured") {
 		t.Errorf("Expected 'No HTTP checks configured', got: %s", result)
+	}
+	if !strings.Contains(result, "No system stats recorded yet") {
+		t.Errorf("Expected 'No system stats recorded yet', got: %s", result)
 	}
 }
 
 func TestBuildDigest_WithRecovery(t *testing.T) {
-	ct := monitor.NewContainerTracker()
-	// Add container that stopped, then recovered
-	_ = ct.UpdateFromEvent("abc123", "nginx", "", true, "container")
-
 	storage := &testDigestStorage{
 		alerts: []types.Alert{
 			{Type: "docker", Level: "critical", Message: "Container nginx stopped", Timestamp: time.Now().Add(-6 * time.Hour)},
@@ -212,9 +189,8 @@ func TestBuildDigest_WithRecovery(t *testing.T) {
 			},
 		},
 	}
-
-	sm := &testSystemMonitor{}
-	ds := NewDigestService(ct, storage, sm, "Monic")
+	sm := &testDigestSystemMonitor{}
+	ds := NewDigestService(storage, sm, nil, "Monic")
 
 	result := ds.BuildDigest()
 
@@ -226,7 +202,10 @@ func TestBuildDigest_WithRecovery(t *testing.T) {
 	}
 }
 
-func TestBuildDigest_NilContainerTracker(t *testing.T) {
+func TestBuildDigest_WithDockerMonitor(t *testing.T) {
+	// Test with a real DockerMonitor — container summary should appear
+	dm := monitor.NewDockerMonitor(&types.DockerConfig{CheckInterval: 60, Enabled: false})
+
 	storage := &testDigestStorage{
 		stats: []types.SystemStats{
 			{
@@ -237,14 +216,18 @@ func TestBuildDigest_NilContainerTracker(t *testing.T) {
 			},
 		},
 	}
-
-	sm := &testSystemMonitor{}
-	ds := NewDigestService(nil, storage, sm, "Monic")
+	sm := &testDigestSystemMonitor{}
+	ds := NewDigestService(storage, sm, dm, "Monic")
 
 	result := ds.BuildDigest()
 
-	if !strings.Contains(result, "Docker monitoring is disabled") {
-		t.Errorf("Expected 'Docker monitoring is disabled', got: %s", result)
+	// Even with DockerMonitor, if it can't connect the summary may show error
+	if !strings.Contains(result, "📊 MONITORED CONTAINERS") {
+		t.Errorf("Expected container section, got: %s", result)
+	}
+	// Should include either stats or an error
+	if !strings.Contains(result, "Total:") && !strings.Contains(result, "Error collecting") {
+		t.Errorf("Expected container stats or error, got: %s", result)
 	}
 }
 

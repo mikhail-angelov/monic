@@ -11,24 +11,25 @@ import (
 
 // DigestService builds daily status digest reports.
 type DigestService struct {
-	containerTrack *monitor.ContainerTracker
-	storage        Storage
-	systemMonitor  *monitor.SystemMonitor
-	appName        string
+	storage       Storage
+	systemMonitor *monitor.SystemMonitor
+	dockerMonitor *monitor.DockerMonitor
+	appName       string
 }
 
 // NewDigestService creates a new digest service.
+// dockerMonitor can be nil if Docker monitoring is disabled.
 func NewDigestService(
-	containerTrack *monitor.ContainerTracker,
 	storage Storage,
 	systemMonitor *monitor.SystemMonitor,
+	dockerMonitor *monitor.DockerMonitor,
 	appName string,
 ) *DigestService {
 	return &DigestService{
-		containerTrack: containerTrack,
-		storage:        storage,
-		systemMonitor:  systemMonitor,
-		appName:        appName,
+		storage:       storage,
+		systemMonitor: systemMonitor,
+		dockerMonitor: dockerMonitor,
+		appName:       appName,
 	}
 }
 
@@ -71,41 +72,23 @@ func (ds *DigestService) BuildDigest() string {
 func (ds *DigestService) writeContainerSection(b *strings.Builder) {
 	b.WriteString("📊 MONITORED CONTAINERS\n")
 
-	if ds.containerTrack == nil {
+	if ds.dockerMonitor == nil {
 		b.WriteString("  Docker monitoring is disabled.\n\n")
 		return
 	}
 
-	summary := ds.containerTrack.GetSummary()
-	statuses := ds.containerTrack.GetContainerStatuses()
+	stats, err := ds.dockerMonitor.CheckContainers()
+	if err != nil {
+		b.WriteString(fmt.Sprintf("  Error collecting container stats: %v\n\n", err))
+		return
+	}
 
+	summary := ds.dockerMonitor.GetContainerSummary(stats)
 	total := summary["total_containers"]
 	running := summary["running_containers"]
 	stopped := summary["stopped_containers"]
 
-	b.WriteString(fmt.Sprintf("  Total: %d  |  Running: %d  |  Stopped: %d\n", total, running, stopped))
-
-	// List stopped/down containers
-	downContainers := 0
-	for _, s := range statuses {
-		running, _ := s["running"].(bool)
-		activeAlert, _ := s["active_alert"].(bool)
-		if !running && activeAlert {
-			downContainers++
-		}
-	}
-
-	b.WriteString(fmt.Sprintf("  Containers down by failure: %d\n\n", downContainers))
-
-	// Detail lines for down containers
-	for _, s := range statuses {
-		running, _ := s["running"].(bool)
-		displayName, _ := s["display_name"].(string)
-		if !running {
-			b.WriteString(fmt.Sprintf("  ⚠️  %s — stopped\n", displayName))
-		}
-	}
-	b.WriteString("\n")
+	b.WriteString(fmt.Sprintf("  Total: %v  |  Running: %v  |  Stopped: %v\n\n", total, running, stopped))
 }
 
 func (ds *DigestService) writeIncidentSection(b *strings.Builder, cutoff time.Time) {
@@ -114,7 +97,6 @@ func (ds *DigestService) writeIncidentSection(b *strings.Builder, cutoff time.Ti
 	alerts := ds.storage.GetAlerts()
 	failures := 0
 	recoveries := 0
-	seenFailures := make(map[string]bool)
 
 	for _, a := range alerts {
 		if a.Timestamp.Before(cutoff) {
@@ -125,17 +107,13 @@ func (ds *DigestService) writeIncidentSection(b *strings.Builder, cutoff time.Ti
 				failures++
 			} else if a.Level == "info" && strings.Contains(a.Message, "recovered") {
 				recoveries++
-				// Extract container name: "Container xxx recovered (now running)"
-				if parts := strings.SplitN(a.Message, " ", 3); len(parts) >= 2 {
-					seenFailures[parts[1]] = true
-				}
 			}
 		}
 	}
 
 	b.WriteString(fmt.Sprintf("  Failures: %d\n", failures))
 	b.WriteString(fmt.Sprintf("  Recoveries: %d\n", recoveries))
-	b.WriteString(fmt.Sprintf("  Currently down by failure: %d\n\n", len(seenFailures)))
+	b.WriteString("\n")
 }
 
 func (ds *DigestService) writeHTTPSection(b *strings.Builder, cutoff time.Time) {
