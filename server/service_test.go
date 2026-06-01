@@ -25,6 +25,7 @@ func createTestMonitorService(t *testing.T, config *types.Config) *MonitorServic
 		systemMonitor,
 		storage,
 		stateManager,
+		nil, // containerTrack
 	)
 
 	return NewMonitorService(
@@ -37,6 +38,8 @@ func createTestMonitorService(t *testing.T, config *types.Config) *MonitorServic
 		statsServer,
 		nil, // dockerWatcher
 		nil, // healthRegistry
+		nil, // containerTrack
+		nil, // digestService
 	)
 }
 

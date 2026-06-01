@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"time"
 
@@ -396,6 +397,216 @@ func (am *Manager) SendAlerts(alerts []types.Alert) error {
 	}
 
 	return nil
+}
+
+// SendDigest sends a daily digest report through all configured channels.
+// The digest is formatted as plain text and routed to every enabled channel.
+func (am *Manager) SendDigest(digestText string) error {
+	appName := am.getAppName()
+	var errs []string
+
+	if am.config.Email.Enabled {
+		if err := am.sendDigestEmail(appName, digestText); err != nil {
+			slog.Error("Failed to send digest email", "error", err)
+			errs = append(errs, fmt.Sprintf("email: %v", err))
+		}
+	}
+
+	if am.config.Mailgun.Enabled {
+		if err := am.sendDigestMailgun(appName, digestText); err != nil {
+			slog.Error("Failed to send digest Mailgun", "error", err)
+			errs = append(errs, fmt.Sprintf("mailgun: %v", err))
+		}
+	}
+
+	if am.config.Telegram.Enabled {
+		if err := am.sendDigestTelegram(appName, digestText); err != nil {
+			slog.Error("Failed to send digest Telegram", "error", err)
+			errs = append(errs, fmt.Sprintf("telegram: %v", err))
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to send digest: %s", strings.Join(errs, "; "))
+	}
+	slog.Info("Daily digest sent successfully")
+	return nil
+}
+
+// sendDigestEmail sends the digest via SMTP email with a daily subject.
+func (am *Manager) sendDigestEmail(appName, digestText string) error {
+	emailConfig := am.config.Email
+	if emailConfig.SMTPHost == "" || emailConfig.SMTPPort == 0 {
+		return fmt.Errorf("SMTP host and port must be configured")
+	}
+	if emailConfig.From == "" || emailConfig.To == "" {
+		return fmt.Errorf("from and to email addresses must be configured")
+	}
+
+	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
+
+	headers := make(map[string]string)
+	headers["From"] = emailConfig.From
+	headers["To"] = emailConfig.To
+	headers["Subject"] = subject
+	headers["Content-Type"] = "text/plain; charset=\"utf-8\""
+
+	message := ""
+	for k, v := range headers {
+		message += fmt.Sprintf("%s: %s\r\n", k, v)
+	}
+	message += "\r\n" + digestText
+
+	auth := smtp.PlainAuth("", emailConfig.Username, emailConfig.Password, emailConfig.SMTPHost)
+	addr := fmt.Sprintf("%s:%d", emailConfig.SMTPHost, emailConfig.SMTPPort)
+
+	if emailConfig.UseTLS {
+		return am.sendEmailTLS(addr, auth, emailConfig, message)
+	}
+	err := smtp.SendMail(addr, auth, emailConfig.From, []string{emailConfig.To}, []byte(message))
+	if err != nil {
+		return fmt.Errorf("SMTP send failed: %w", err)
+	}
+	slog.Info("Digest email sent", "recipient", emailConfig.To)
+	return nil
+}
+
+// sendDigestMailgun sends the digest via Mailgun with a daily subject.
+func (am *Manager) sendDigestMailgun(appName, digestText string) error {
+	mailgunConfig := am.config.Mailgun
+	if mailgunConfig.APIKey == "" {
+		return fmt.Errorf("Mailgun API key must be configured")
+	}
+	if mailgunConfig.Domain == "" {
+		return fmt.Errorf("Mailgun domain must be configured")
+	}
+	if mailgunConfig.From == "" || mailgunConfig.To == "" {
+		return fmt.Errorf("from and to email addresses must be configured")
+	}
+
+	baseURL := mailgunConfig.BaseURL
+	if baseURL == "" {
+		baseURL = "https://api.mailgun.net/v3"
+	}
+
+	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
+
+	// Mailgun /messages expects application/x-www-form-urlencoded, not JSON
+	form := url.Values{}
+	form.Set("from", mailgunConfig.From)
+	form.Set("to", mailgunConfig.To)
+	form.Set("subject", subject)
+	form.Set("text", digestText)
+
+	url := fmt.Sprintf("%s/%s/messages", baseURL, mailgunConfig.Domain)
+	req, err := http.NewRequest("POST", url, strings.NewReader(form.Encode()))
+	if err != nil {
+		return fmt.Errorf("failed to create Mailgun request: %w", err)
+	}
+
+	req.SetBasicAuth("api", mailgunConfig.APIKey)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Mailgun API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("Mailgun API returned status %s: %s", resp.Status, string(body))
+	}
+
+	slog.Info("Digest Mailgun sent", "recipient", mailgunConfig.To)
+	return nil
+}
+
+// sendDigestTelegram sends the digest via Telegram bot, splitting if too long.
+func (am *Manager) sendDigestTelegram(appName, digestText string) error {
+	telegramConfig := am.config.Telegram
+	if telegramConfig.BotToken == "" {
+		return fmt.Errorf("Telegram bot token must be configured")
+	}
+	if telegramConfig.ChatID == "" {
+		return fmt.Errorf("Telegram chat ID must be configured")
+	}
+	if !isValidTelegramBotToken(telegramConfig.BotToken) {
+		return fmt.Errorf("invalid Telegram bot token format")
+	}
+
+	// Telegram has a 4096 character limit per message (runes, not bytes)
+	const maxLen = 4000
+	message := fmt.Sprintf("<b>%s Daily Digest</b>\n%s", appName, time.Now().Format("2006-01-02"))
+	message += "\n\n<pre>"
+	message += escapeTelegramHTML(digestText)
+	message += "</pre>"
+
+	if len([]rune(message)) <= maxLen {
+		return am.sendTelegramMessage(telegramConfig, message)
+	}
+
+	// Split into multiple messages by lines, counting runes not bytes
+	lines := strings.Split(digestText, "\n")
+	var part string
+	for _, line := range lines {
+		if len([]rune(part))+len([]rune(line))+1 > maxLen-100 {
+			if err := am.sendTelegramMessage(telegramConfig, "<pre>"+escapeTelegramHTML(part)+"</pre>"); err != nil {
+				return err
+			}
+			part = line
+		} else {
+			if part != "" {
+				part += "\n"
+			}
+			part += line
+		}
+	}
+	if part != "" {
+		return am.sendTelegramMessage(telegramConfig, "<pre>"+escapeTelegramHTML(part)+"</pre>")
+	}
+	return nil
+}
+
+// sendTelegramMessage is a helper to send a single Telegram message.
+func (am *Manager) sendTelegramMessage(config types.TelegramConfig, text string) error {
+	url := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", config.BotToken)
+	reqBody := map[string]string{
+		"chat_id":    config.ChatID,
+		"text":       text,
+		"parse_mode": "HTML",
+	}
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to marshal Telegram request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return fmt.Errorf("failed to create Telegram request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("Telegram API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("Telegram API returned status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+// escapeTelegramHTML escapes characters that have special meaning in Telegram HTML.
+func escapeTelegramHTML(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }
 
 // ValidateConfig validates the alerting configuration

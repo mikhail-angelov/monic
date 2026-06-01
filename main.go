@@ -42,12 +42,14 @@ func main() {
 	alertManager := alert.NewManager(&cfg.Alerting, cfg.AppName)
 	stateManager := alert.NewStateManager()
 	storage := server.NewStorageManager(100)
+	containerTrack := monitor.NewContainerTracker()
 
 	statsServer := server.NewStatsServer(
 		&cfg.HTTPServer,
 		systemMonitor,
 		storage,
 		stateManager,
+		containerTrack,
 	)
 
 	// Initialize Docker discovery if enabled
@@ -74,6 +76,17 @@ func main() {
 		slog.Warn("Docker monitoring disabled")
 	}
 
+	// Initialize DigestService if enabled
+	var digestSvc *server.DigestService
+	if cfg.Digest.Enabled {
+		digestSvc = server.NewDigestService(
+			storage,
+			systemMonitor,
+			containerTrack,
+			cfg.AppName,
+		)
+	}
+
 	// Create and start monitoring service
 	service := server.NewMonitorService(
 		cfg,
@@ -85,6 +98,8 @@ func main() {
 		statsServer,
 		dockerWatcher,
 		healthRegistry,
+		containerTrack,
+		digestSvc,
 	)
 
 	if err := service.Start(); err != nil {

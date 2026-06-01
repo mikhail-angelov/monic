@@ -21,19 +21,15 @@ type StatsServer struct {
 	containerTrack *monitor.ContainerTracker
 }
 
-// SetContainerTracker sets the container tracker for the web UI.
-func (s *StatsServer) SetContainerTracker(ct *monitor.ContainerTracker) {
-	s.containerTrack = ct
-}
-
 // NewStatsServer creates a new stats server instance
-func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, stateManager any) *StatsServer {
+func NewStatsServer(config *types.HTTPServerConfig, systemMonitor *monitor.SystemMonitor, storage Storage, stateManager any, containerTrack *monitor.ContainerTracker) *StatsServer {
 	return &StatsServer{
-		config:        config,
-		systemMonitor: systemMonitor,
-		storage:       storage,
-		stateManager:  stateManager,
-		startTime:     time.Now(),
+		config:         config,
+		systemMonitor:  systemMonitor,
+		storage:        storage,
+		stateManager:   stateManager,
+		startTime:      time.Now(),
+		containerTrack: containerTrack,
 	}
 }
 

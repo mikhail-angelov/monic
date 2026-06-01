@@ -15,21 +15,21 @@ import (
 
 // MonitorService represents the main monitoring service
 type MonitorService struct {
-	config         *types.Config
-	systemMonitor  *monitor.SystemMonitor
-	httpMonitor    *monitor.HTTPMonitor
-	alertManager   *alert.Manager
-	stateManager   *alert.StateManager
-	statsServer    *StatsServer
-	storage        Storage
-	stopChan       chan struct{}
-	wg             sync.WaitGroup
-	startTime      time.Time
+	config        *types.Config
+	systemMonitor *monitor.SystemMonitor
+	httpMonitor   *monitor.HTTPMonitor
+	alertManager  *alert.Manager
+	stateManager  *alert.StateManager
+	statsServer   *StatsServer
+	storage       Storage
+	stopChan      chan struct{}
+	wg            sync.WaitGroup
+	startTime     time.Time
 
-	// New components
-	dockerWatcher   *discovery.Watcher
-	healthRegistry  *monitor.HealthCheckRegistry
-	containerTrack  *monitor.ContainerTracker
+	digestService  *DigestService
+	dockerWatcher  *discovery.Watcher
+	healthRegistry *monitor.HealthCheckRegistry
+	containerTrack *monitor.ContainerTracker
 }
 
 // NewMonitorService creates a new monitoring service instance with injected dependencies
@@ -43,10 +43,9 @@ func NewMonitorService(
 	statsServer *StatsServer,
 	dockerWatcher *discovery.Watcher,
 	healthRegistry *monitor.HealthCheckRegistry,
+	containerTrack *monitor.ContainerTracker,
+	digestService *DigestService,
 ) *MonitorService {
-	containerTrack := monitor.NewContainerTracker()
-	// Share the container tracker with the stats server
-	statsServer.SetContainerTracker(containerTrack)
 	return &MonitorService{
 		config:        config,
 		systemMonitor: systemMonitor,
@@ -61,12 +60,8 @@ func NewMonitorService(
 		dockerWatcher:  dockerWatcher,
 		healthRegistry: healthRegistry,
 		containerTrack: containerTrack,
+		digestService:  digestService,
 	}
-}
-
-// ContainerTracker returns the container tracker used by the service.
-func (ms *MonitorService) ContainerTracker() *monitor.ContainerTracker {
-	return ms.containerTrack
 }
 
 // Start begins the monitoring service
@@ -88,11 +83,12 @@ func (ms *MonitorService) Start() error {
 	slog.Info("System Info", "info", systemInfo)
 
 	// Start monitoring goroutines
-	ms.wg.Add(4)
+	ms.wg.Add(5)
 	go ms.systemMonitoringLoop()
 	go ms.dockerWatcherLoop()
 	go ms.healthCheckLoop()
 	go ms.alertProcessingLoop()
+	go ms.digestLoop()
 
 	slog.Info("Monic monitoring service started successfully")
 	return nil
@@ -260,6 +256,60 @@ func (ms *MonitorService) alertProcessingLoop() {
 		case <-alertTicker.C:
 			ms.processAlerts()
 		}
+	}
+}
+
+// digestLoop sends a daily digest at midnight UTC every day.
+// If no digest service is configured, this loop returns immediately.
+func (ms *MonitorService) digestLoop() {
+	defer ms.wg.Done()
+
+	if ms.digestService == nil {
+		return
+	}
+
+	slog.Info("Daily digest scheduled, next at midnight UTC")
+
+	// Calculate time until next midnight UTC
+	now := time.Now().UTC()
+	nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	if !nextMidnight.After(now) {
+		nextMidnight = nextMidnight.Add(24 * time.Hour)
+	}
+
+	// Wait until next midnight
+	select {
+	case <-ms.stopChan:
+		return
+	case <-time.After(nextMidnight.Sub(now)):
+	}
+
+	// Fire at midnight, then every 24h
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ms.stopChan:
+			return
+		case <-ticker.C:
+			ms.sendDigest()
+		}
+	}
+}
+
+// sendDigest builds and dispatches the daily digest via alert manager.
+func (ms *MonitorService) sendDigest() {
+	slog.Info("Building daily digest...")
+
+	digestText := ms.digestService.BuildDigest()
+	if digestText == "" {
+		slog.Warn("Digest text is empty, skipping")
+		return
+	}
+
+	if err := ms.alertManager.SendDigest(digestText); err != nil {
+		slog.Error("Failed to send daily digest", "error", err)
 	}
 }
 
