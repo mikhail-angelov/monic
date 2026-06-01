@@ -18,7 +18,6 @@ type MonitorService struct {
 	config        *types.Config
 	systemMonitor *monitor.SystemMonitor
 	httpMonitor   *monitor.HTTPMonitor
-	dockerMonitor *monitor.DockerMonitor
 	alertManager  *alert.Manager
 	stateManager  *alert.StateManager
 	statsServer   *StatsServer
@@ -27,10 +26,10 @@ type MonitorService struct {
 	wg            sync.WaitGroup
 	startTime     time.Time
 
-	digestService *DigestService
-  dockerWatcher   *discovery.Watcher
-	healthRegistry  *monitor.HealthCheckRegistry
-	containerTrack  *monitor.ContainerTracker
+	digestService  *DigestService
+	dockerWatcher  *discovery.Watcher
+	healthRegistry *monitor.HealthCheckRegistry
+	containerTrack *monitor.ContainerTracker
 }
 
 // NewMonitorService creates a new monitoring service instance with injected dependencies

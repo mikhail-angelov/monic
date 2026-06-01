@@ -11,10 +11,10 @@ import (
 
 // DigestService builds daily status digest reports.
 type DigestService struct {
-	storage       Storage
-	systemMonitor systemMonitor
-	dockerMonitor *monitor.DockerMonitor
-	appName       string
+	storage         Storage
+	systemMonitor   systemMonitor
+	containerTrack  *monitor.ContainerTracker
+	appName         string
 }
 
 // systemMonitor is an interface for what DigestService needs from the system monitor.
@@ -27,14 +27,14 @@ type systemMonitor interface {
 func NewDigestService(
 	storage Storage,
 	systemMonitor systemMonitor,
-	dockerMonitor *monitor.DockerMonitor,
+	containerTrack *monitor.ContainerTracker,
 	appName string,
 ) *DigestService {
 	return &DigestService{
-		storage:       storage,
-		systemMonitor: systemMonitor,
-		dockerMonitor: dockerMonitor,
-		appName:       appName,
+		storage:         storage,
+		systemMonitor:   systemMonitor,
+		containerTrack:  containerTrack,
+		appName:         appName,
 	}
 }
 
@@ -77,18 +77,12 @@ func (ds *DigestService) BuildDigest() string {
 func (ds *DigestService) writeContainerSection(b *strings.Builder) {
 	b.WriteString("📊 MONITORED CONTAINERS\n")
 
-	if ds.dockerMonitor == nil {
+	if ds.containerTrack == nil {
 		b.WriteString("  Docker monitoring is disabled.\n\n")
 		return
 	}
 
-	stats, err := ds.dockerMonitor.CheckContainers()
-	if err != nil {
-		b.WriteString(fmt.Sprintf("  Error collecting container stats: %v\n\n", err))
-		return
-	}
-
-	summary := ds.dockerMonitor.GetContainerSummary(stats)
+	summary := ds.containerTrack.GetSummary()
 	total := summary["total_containers"]
 	running := summary["running_containers"]
 	stopped := summary["stopped_containers"]

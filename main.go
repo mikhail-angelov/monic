@@ -92,7 +92,7 @@ func main() {
 		digestSvc := server.NewDigestService(
 			storage,
 			systemMonitor,
-			dockerMonitor,
+			service.ContainerTracker(),
 			cfg.AppName,
 		)
 		service.SetDigestService(digestSvc)

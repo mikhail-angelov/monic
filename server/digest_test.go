@@ -202,9 +202,12 @@ func TestBuildDigest_WithRecovery(t *testing.T) {
 	}
 }
 
-func TestBuildDigest_WithDockerMonitor(t *testing.T) {
-	// Test with a real DockerMonitor — container summary should appear
-	dm := monitor.NewDockerMonitor(&types.DockerConfig{CheckInterval: 60, Enabled: false})
+func TestBuildDigest_WithContainerTracker(t *testing.T) {
+	// Test with a real ContainerTracker — container summary should appear
+	ct := monitor.NewContainerTracker()
+	// Seed some container data
+	ct.UpdateFromEvent("abc123", "redis", "My Redis", true, "container")
+	ct.UpdateFromEvent("def456", "nginx", "", false, "http")
 
 	storage := &testDigestStorage{
 		stats: []types.SystemStats{
@@ -217,17 +220,21 @@ func TestBuildDigest_WithDockerMonitor(t *testing.T) {
 		},
 	}
 	sm := &testDigestSystemMonitor{}
-	ds := NewDigestService(storage, sm, dm, "Monic")
+	ds := NewDigestService(storage, sm, ct, "Monic")
 
 	result := ds.BuildDigest()
 
-	// Even with DockerMonitor, if it can't connect the summary may show error
 	if !strings.Contains(result, "📊 MONITORED CONTAINERS") {
 		t.Errorf("Expected container section, got: %s", result)
 	}
-	// Should include either stats or an error
-	if !strings.Contains(result, "Total:") && !strings.Contains(result, "Error collecting") {
-		t.Errorf("Expected container stats or error, got: %s", result)
+	if !strings.Contains(result, "Total: 2") {
+		t.Errorf("Expected Total: 2, got: %s", result)
+	}
+	if !strings.Contains(result, "Running: 1") {
+		t.Errorf("Expected Running: 1, got: %s", result)
+	}
+	if !strings.Contains(result, "Stopped: 1") {
+		t.Errorf("Expected Stopped: 1, got: %s", result)
 	}
 }
 
