@@ -66,7 +66,7 @@ func TestStatsServer_HandleStats(t *testing.T) {
 		Timestamp: time.Now(),
 	})
 
-	server := NewStatsServer(config, systemMonitor, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
 
 	// Create a test request
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -166,7 +166,7 @@ func TestStatsServer_HandleStats_HTML(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
 
 	// Create a test request (default Accept header)
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -208,7 +208,7 @@ func TestStatsServer_BasicAuth(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
 
 	// Test without authentication
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -259,7 +259,7 @@ func TestStatsServer_NoAuthWhenDisabled(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
 
 	// Test without authentication when no credentials are configured
 	req := httptest.NewRequest("GET", "/stats", http.NoBody)
@@ -287,7 +287,7 @@ func TestStatsServer_MethodNotAllowed(t *testing.T) {
 	})
 
 	storage := NewStorageManager(100)
-	server := NewStatsServer(config, systemMonitor, storage, nil)
+	server := NewStatsServer(config, systemMonitor, storage, nil, nil)
 
 	// Test with POST method (should be rejected)
 	req := httptest.NewRequest("POST", "/stats", http.NoBody)

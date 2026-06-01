@@ -43,10 +43,9 @@ func NewMonitorService(
 	statsServer *StatsServer,
 	dockerWatcher *discovery.Watcher,
 	healthRegistry *monitor.HealthCheckRegistry,
+	containerTrack *monitor.ContainerTracker,
+	digestService *DigestService,
 ) *MonitorService {
-	containerTrack := monitor.NewContainerTracker()
-	// Share the container tracker with the stats server
-	statsServer.SetContainerTracker(containerTrack)
 	return &MonitorService{
 		config:        config,
 		systemMonitor: systemMonitor,
@@ -61,12 +60,8 @@ func NewMonitorService(
 		dockerWatcher:  dockerWatcher,
 		healthRegistry: healthRegistry,
 		containerTrack: containerTrack,
+		digestService:  digestService,
 	}
-}
-
-// ContainerTracker returns the container tracker used by the service.
-func (ms *MonitorService) ContainerTracker() *monitor.ContainerTracker {
-	return ms.containerTrack
 }
 
 // Start begins the monitoring service
@@ -113,11 +108,6 @@ func (ms *MonitorService) Stop() {
 	close(ms.stopChan)
 	ms.wg.Wait()
 	slog.Info("Monic monitoring service stopped")
-}
-
-// SetDigestService sets the digest service for daily reports.
-func (ms *MonitorService) SetDigestService(ds *DigestService) {
-	ms.digestService = ds
 }
 
 // systemMonitoringLoop handles system resource monitoring
