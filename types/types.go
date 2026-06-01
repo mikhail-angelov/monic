@@ -5,11 +5,24 @@ package types
 
 import "time"
 
+// Label constants for Docker container discovery
+const (
+	LabelEnabled          = "monic.enabled"
+	LabelCheck            = "monic.check"
+	LabelCheckHTTPURL     = "monic.check_http_url"
+	LabelCheckHTTPInterval = "monic.check_http_interval"
+	LabelCheckHTTPTimeout  = "monic.check_http_timeout"
+	LabelCheckHTTPExpected = "monic.check_http_expected"
+	LabelName             = "monic.name"
+
+	CheckTypeContainer = "container"
+	CheckTypeHTTP      = "http"
+)
+
 // Config represents the main configuration structure
 type Config struct {
 	AppName      string             `envconfig:"APP_NAME"`
 	SystemChecks SystemChecksConfig `envconfig:"CHECK_SYSTEM"`
-	HTTPChecks   HTTPCheck          `envconfig:"CHECK_HTTP"`
 	Alerting     AlertingConfig     `envconfig:"ALERTING"`
 	DockerChecks DockerConfig       `envconfig:"CHECK_DOCKER"`
 	HTTPServer   HTTPServerConfig   `envconfig:"HTTP_SERVER"`
@@ -23,16 +36,6 @@ type SystemChecksConfig struct {
 	MemoryThreshold int      `envconfig:"MEMORY_THRESHOLD"`
 	DiskThreshold   int      `envconfig:"DISK_THRESHOLD"`
 	DiskPaths       []string `envconfig:"DISK_PATHS"`
-}
-
-// HTTPCheck defines a single HTTP/HTTPS endpoint to monitor
-type HTTPCheck struct {
-	URL            string    `envconfig:"URL"`
-	Method         string    `envconfig:"METHOD"`
-	Timeout        int       `envconfig:"TIMEOUT"`
-	ExpectedStatus int       `envconfig:"EXPECTED_STATUS"`
-	CheckInterval  int       `envconfig:"INTERVAL"`
-	LastCheck      time.Time ``
 }
 
 // AlertingConfig contains alert notification settings
@@ -96,6 +99,31 @@ type DiskStats struct {
 	UsedPercent float64
 }
 
+// MonitoredContainer represents a container tracked by Monic via label-based discovery.
+type MonitoredContainer struct {
+	ID                    string
+	Name                  string
+	CustomName            string
+	Labels                map[string]string
+	CheckType             string // "container" or "http"
+	CheckHTTPURL          string
+	CheckHTTPInterval     int
+	CheckHTTPTimeout      int
+	CheckHTTPExpectedCode int
+	Running               bool
+	Status                string // "running", "stopped", "paused"
+}
+
+// HTTPCheck defines a single HTTP/HTTPS endpoint to monitor
+type HTTPCheck struct {
+	URL            string
+	Method         string
+	Timeout        int
+	ExpectedStatus int
+	CheckInterval  int
+	LastCheck      time.Time
+}
+
 // HTTPCheckResult contains the result of an HTTP check
 type HTTPCheckResult struct {
 	Name         string
@@ -105,6 +133,17 @@ type HTTPCheckResult struct {
 	Success      bool
 	Error        string
 	Timestamp    time.Time
+}
+
+// HTTPCheckTarget defines a single HTTP health check target discovered from a container label.
+type HTTPCheckTarget struct {
+	ContainerID   string
+	Name          string
+	URL           string
+	Method        string
+	Timeout       int
+	ExpectedCode  int
+	CheckInterval int
 }
 
 // Alert represents a monitoring alert
@@ -128,8 +167,7 @@ type AlertState struct {
 // DockerConfig contains Docker container monitoring settings
 type DockerConfig struct {
 	Enabled       bool
-	CheckInterval int      `envconfig:"INTERVAL"`
-	Containers    []string `envconfig:"CONTAINERS"`
+	CheckInterval int `envconfig:"INTERVAL"` // default: 300 (5 min)
 }
 
 // DockerContainerStats contains Docker container status information

@@ -1,30 +1,28 @@
-version: "3.8"
-
 services:
   monic:
-    image: monic:latest
+    build: .
     container_name: monic
     restart: unless-stopped
+    privileged: true
     volumes:
+      - /:/host:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
     env_file:
       - ./.env
     environment:
-      - MONIC_APP_NAME=AppUnderMonitor
+      - MONIC_APP_NAME=Monic
 
+      # System monitoring
       - MONIC_CHECK_SYSTEM_INTERVAL=60
       - MONIC_CHECK_SYSTEM_CPU_THRESHOLD=80
       - MONIC_CHECK_SYSTEM_MEMORY_THRESHOLD=85
       - MONIC_CHECK_SYSTEM_DISK_THRESHOLD=90
 
-      - MONIC_CHECK_DOCKER_INTERVAL=60
-      - MONIC_CHECK_DOCKER_CONTAINERS=nginx
+      # Docker discovery interval (default: 300 = 5 min)
+      - MONIC_CHECK_DOCKER_INTERVAL=300
 
-      - MONIC_CHECK_HTTP_INTERVAL=300
-      - MONIC_CHECK_HTTP_URL=https://ya.ru
-      - MONIC_CHECK_HTTP_METHOD=GET
-      - MONIC_CHECK_HTTP_TIMEOUT=10
-      - MONIC_CHECK_HTTP_EXPECTED_STATUS=200
+      # HTTP Server
+      - MONIC_HTTP_SERVER_PORT=8765
 
     logging:
       driver: "json-file"
@@ -33,15 +31,3 @@ services:
         max-file: "3"
     ports:
       - "8765:8765"
-    depends_on:
-      - nginx
-
-  # Optional: Add a simple web interface for monitoring (future enhancement)
-  nginx:
-    image: nginx:alpine
-    container_name: nginx
-    ports:
-      - "8088:80"
-
-networks:
-  default:

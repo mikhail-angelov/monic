@@ -13,11 +13,17 @@ import (
 
 // StatsServer represents the HTTP stats server
 type StatsServer struct {
-	config        *types.HTTPServerConfig
-	systemMonitor *monitor.SystemMonitor
-	storage       Storage
-	stateManager  any // We'll use any to avoid circular dependency
-	startTime     time.Time
+	config         *types.HTTPServerConfig
+	systemMonitor  *monitor.SystemMonitor
+	storage        Storage
+	stateManager   any // We'll use any to avoid circular dependency
+	startTime      time.Time
+	containerTrack *monitor.ContainerTracker
+}
+
+// SetContainerTracker sets the container tracker for the web UI.
+func (s *StatsServer) SetContainerTracker(ct *monitor.ContainerTracker) {
+	s.containerTrack = ct
 }
 
 // NewStatsServer creates a new stats server instance
@@ -151,6 +157,14 @@ func (s *StatsServer) getStatsResponse() map[string]any {
 
 	// Monitoring thresholds (from system monitor)
 	response["thresholds"] = s.systemMonitor.GetThresholds()
+
+	// Container statuses
+	if s.containerTrack != nil {
+		response["containers"] = map[string]any{
+			"summary": s.containerTrack.GetSummary(),
+			"list":    s.containerTrack.GetContainerStatuses(),
+		}
+	}
 
 	return response
 }
