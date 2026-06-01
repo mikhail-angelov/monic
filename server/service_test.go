@@ -35,6 +35,8 @@ func createTestMonitorService(t *testing.T, config *types.Config) *MonitorServic
 		stateManager,
 		storage,
 		statsServer,
+		nil, // dockerWatcher
+		nil, // healthRegistry
 	)
 }
 

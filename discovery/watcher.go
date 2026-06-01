@@ -1,21 +1,22 @@
 // Package discovery implements label-based Docker container discovery for Monic.
-// It polls the Docker API at a configurable interval, filters containers by monic.* labels,
-// and emits events when containers are added, removed, or updated.
+// It polls the Docker API at a configurable interval via plain HTTP over Unix socket,
+// filters containers by monic.* labels, and emits events when containers are added,
+// removed, or updated.
 package discovery
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"bconf.com/monic/types"
-
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 )
 
 // EventType represents the type of change detected in monitored containers.
@@ -36,7 +37,7 @@ type ContainerEvent struct {
 
 // Watcher manages Docker container discovery via polling.
 type Watcher struct {
-	client     *client.Client
+	client     *http.Client
 	interval   time.Duration
 	excludeIDs map[string]bool // containers to exclude (e.g. Monic itself)
 
@@ -49,7 +50,7 @@ type Watcher struct {
 
 // NewWatcher creates a new Docker container watcher.
 // The interval parameter controls how often containers are polled.
-func NewWatcher(dockerClient *client.Client, interval time.Duration) *Watcher {
+func NewWatcher(dockerClient *http.Client, interval time.Duration) *Watcher {
 	return &Watcher{
 		client:     dockerClient,
 		interval:   interval,
@@ -111,11 +112,18 @@ func (w *Watcher) Stop() {
 	close(w.stopCh)
 }
 
+// dockerContainer is a minimal representation of a Docker container from the API.
+type dockerContainer struct {
+	ID     string            `json:"Id"`
+	Names  []string          `json:"Names"`
+	Image  string            `json:"Image"`
+	State  string            `json:"State"`
+	Labels map[string]string `json:"Labels"`
+}
+
 // poll fetches all containers, filters by labels, and emits change events.
 func (w *Watcher) poll(ctx context.Context) {
-	containers, err := w.client.ContainerList(ctx, container.ListOptions{
-		All: true,
-	})
+	containers, err := w.listContainers(ctx)
 	if err != nil {
 		slog.Error("Failed to list Docker containers", "error", err)
 		return
@@ -168,9 +176,34 @@ func (w *Watcher) poll(ctx context.Context) {
 	w.monitored = discovered
 }
 
+// listContainers fetches all containers via the Docker API over Unix socket.
+func (w *Watcher) listContainers(ctx context.Context) ([]dockerContainer, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost/v1.47/containers/json?all=true", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := w.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list containers: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Docker API returned status %d", resp.StatusCode)
+	}
+
+	var containers []dockerContainer
+	if err := json.NewDecoder(resp.Body).Decode(&containers); err != nil {
+		return nil, fmt.Errorf("failed to decode container list: %w", err)
+	}
+
+	return containers, nil
+}
+
 // parseContainer extracts monitoring info from a Docker container.
 // Returns nil if the container doesn't have monic.enabled=true or is disabled.
-func (w *Watcher) parseContainer(c container.Summary) *types.MonitoredContainer {
+func (w *Watcher) parseContainer(c dockerContainer) *types.MonitoredContainer {
 	enabledVal, hasEnabled := c.Labels[types.LabelEnabled]
 	if !hasEnabled {
 		return nil
@@ -269,20 +302,38 @@ func parseLabelInt(labels map[string]string, key string, defaultVal int) int {
 	return n
 }
 
-// InitDockerClient creates a Docker client from environment with version negotiation.
-func InitDockerClient() (*client.Client, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Docker client: %w", err)
+// unixDialer returns a net.Dialer suitable for connecting to Docker's Unix socket.
+func unixDialer() *net.Dialer {
+	return &net.Dialer{Timeout: 5 * time.Second}
+}
+
+// InitDockerClient creates an HTTP client connected to Docker's Unix socket,
+// using plain HTTP without the Docker SDK library.
+func InitDockerClient() (*http.Client, error) {
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				return unixDialer().DialContext(ctx, "unix", "/var/run/docker.sock")
+			},
+		},
 	}
 
+	// Verify connectivity by pinging the Docker API
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	if _, err := cli.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("failed to connect to Docker daemon: %w", err)
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost/v1.47/_ping", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ping request: %w", err)
 	}
 
-	slog.Info("Docker client initialized successfully")
-	return cli, nil
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to Docker daemon: %w", err)
+	}
+	resp.Body.Close()
+
+	slog.Info("Docker client initialized successfully (plain HTTP over Unix socket)")
+	return client, nil
 }

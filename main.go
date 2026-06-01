@@ -50,6 +50,30 @@ func main() {
 		stateManager,
 	)
 
+	// Initialize Docker discovery if enabled
+	var dockerWatcher *discovery.Watcher
+	var healthRegistry *monitor.HealthCheckRegistry
+
+	if cfg.DockerChecks.Enabled {
+		dockerClient, err := discovery.InitDockerClient()
+		if err != nil {
+			slog.Warn("Failed to initialize Docker client", "error", err)
+		} else {
+			interval := time.Duration(cfg.DockerChecks.CheckInterval) * time.Second
+			dockerWatcher = discovery.NewWatcher(dockerClient, interval)
+
+			// Exclude the Monic container itself
+			monicID := os.Getenv("MONIC_CONTAINER_ID")
+			if monicID != "" {
+				dockerWatcher.ExcludeContainer(monicID)
+			}
+
+			healthRegistry = monitor.NewHealthCheckRegistry(httpMonitor)
+		}
+	} else {
+		slog.Warn("Docker monitoring disabled")
+	}
+
 	// Create and start monitoring service
 	service := server.NewMonitorService(
 		cfg,
@@ -59,32 +83,9 @@ func main() {
 		stateManager,
 		storage,
 		statsServer,
+		dockerWatcher,
+		healthRegistry,
 	)
-
-	// Initialize Docker discovery if enabled
-	if cfg.DockerChecks.Enabled {
-		dockerClient, err := discovery.InitDockerClient()
-		if err != nil {
-			slog.Warn("Failed to initialize Docker client", "error", err)
-		} else {
-			interval := time.Duration(cfg.DockerChecks.CheckInterval) * time.Second
-			watcher := discovery.NewWatcher(dockerClient, interval)
-
-			// Exclude the Monic container itself
-			monicID := os.Getenv("MONIC_CONTAINER_ID")
-			if monicID != "" {
-				watcher.ExcludeContainer(monicID)
-			}
-
-			healthRegistry := monitor.NewHealthCheckRegistry(httpMonitor)
-
-			service.SetDockerWatcher(watcher)
-			service.SetHealthRegistry(healthRegistry)
-			statsServer.SetContainerTracker(service.ContainerTracker())
-		}
-	} else {
-		slog.Warn("Docker monitoring disabled")
-	}
 
 	if err := service.Start(); err != nil {
 		slog.Error("Failed to start monitoring service", "error", err)

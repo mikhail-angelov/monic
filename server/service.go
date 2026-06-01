@@ -41,7 +41,12 @@ func NewMonitorService(
 	stateManager *alert.StateManager,
 	storage Storage,
 	statsServer *StatsServer,
+	dockerWatcher *discovery.Watcher,
+	healthRegistry *monitor.HealthCheckRegistry,
 ) *MonitorService {
+	containerTrack := monitor.NewContainerTracker()
+	// Share the container tracker with the stats server
+	statsServer.SetContainerTracker(containerTrack)
 	return &MonitorService{
 		config:        config,
 		systemMonitor: systemMonitor,
@@ -53,18 +58,10 @@ func NewMonitorService(
 		stopChan:      make(chan struct{}),
 		startTime:     time.Now(),
 
-		containerTrack: monitor.NewContainerTracker(),
+		dockerWatcher:  dockerWatcher,
+		healthRegistry: healthRegistry,
+		containerTrack: containerTrack,
 	}
-}
-
-// SetDockerWatcher sets the Docker watcher (called after Docker client init).
-func (ms *MonitorService) SetDockerWatcher(w *discovery.Watcher) {
-	ms.dockerWatcher = w
-}
-
-// SetHealthRegistry sets the health check registry.
-func (ms *MonitorService) SetHealthRegistry(r *monitor.HealthCheckRegistry) {
-	ms.healthRegistry = r
 }
 
 // ContainerTracker returns the container tracker used by the service.
