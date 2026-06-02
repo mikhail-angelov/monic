@@ -93,7 +93,7 @@ func (am *Manager) SendAlerts(alerts []types.Alert) error {
 // SendDigest sends a daily digest report through all configured channels.
 func (am *Manager) SendDigest(digestText string) error {
 	appName := am.getAppName()
-	subject := fmt.Sprintf("%s Daily Digest — %s", appName, time.Now().Format("2006-01-02"))
+	subject := fmt.Sprintf("%s Daily Digest - %s", appName, time.Now().Format("2006-01-02"))
 
 	var errs []string
 

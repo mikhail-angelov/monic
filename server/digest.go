@@ -194,13 +194,13 @@ func (ds *DigestService) writeSystemSection(b *strings.Builder, cutoff time.Time
 	if thresholds != nil {
 		b.WriteString("  Thresholds:\n")
 		if cpu, ok := thresholds["cpu_threshold"]; ok {
-			fmt.Fprintf(b, "    CPU: > %.0f%%\n", cpu)
+			fmt.Fprintf(b, "    CPU: > %v%%\n", cpu)
 		}
 		if mem, ok := thresholds["memory_threshold"]; ok {
-			fmt.Fprintf(b, "    Memory: > %.0f%%\n", mem)
+			fmt.Fprintf(b, "    Memory: > %v%%\n", mem)
 		}
 		if disk, ok := thresholds["disk_threshold"]; ok {
-			fmt.Fprintf(b, "    Disk: > %.0f%%\n", disk)
+			fmt.Fprintf(b, "    Disk: > %v%%\n", disk)
 		}
 	}
 	b.WriteString("\n")
