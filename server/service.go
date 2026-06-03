@@ -289,9 +289,10 @@ func (ms *MonitorService) digestLoop() {
 	case <-ms.stopChan:
 		return
 	case <-time.After(nextMidnight.Sub(now)):
+		ms.sendDigest()
 	}
 
-	// Fire at midnight, then every 24h
+	// Then every 24h
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
