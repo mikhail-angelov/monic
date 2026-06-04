@@ -275,14 +275,14 @@ func (ms *MonitorService) digestLoop() {
 		return
 	}
 
-	slog.Info("Daily digest scheduled, next at midnight UTC")
-
 	// Calculate time until next midnight UTC
 	now := time.Now().UTC()
 	nextMidnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	if !nextMidnight.After(now) {
 		nextMidnight = nextMidnight.Add(24 * time.Hour)
 	}
+
+	slog.Info("Daily digest scheduled", "next_at", nextMidnight.Format(time.RFC3339), "in", nextMidnight.Sub(now).Round(time.Second).String())
 
 	// Wait until next midnight
 	select {
